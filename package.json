@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "description": "API routes and tools for Afrodezea’s Framer + Supabase integration",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "dev": "node api/test.js",
-    "build": "echo 'no build step needed'"
+    "build": "echo 'No build step needed'"
   },
   "dependencies": {
-    "compromise": "^14.14.4",
+    "compromise": "^14.0.0",
     "sentiment": "^5.0.2"
   }
 }
