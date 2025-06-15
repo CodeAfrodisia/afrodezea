@@ -6,7 +6,9 @@ const sentiment = new Sentiment()
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY
+    process.env.SUPABASE_ANON_KEY,
+    console.log("Supabase URL:", process.env.SUPABASE_URL)
+
 )
 
 async function getUser(req) {
