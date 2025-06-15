@@ -4,10 +4,12 @@ import { createClient } from "@supabase/supabase-js"
 
 const sentiment = new Sentiment()
 
+console.log("Supabase URL:", process.env.SUPABASE_URL)
+
 const supabase = createClient(
     process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY,
-    console.log("Supabase URL:", process.env.SUPABASE_URL)
+    process.env.SUPABASE_ANON_KEY
+    
 
 )
 
