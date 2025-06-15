@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "compromise": "^14.0.0",
-    "sentiment": "^5.0.2"
+    "sentiment": "^5.0.2",
+    "@supabase/supabase-js": "^2.39.5"
   }
 }
