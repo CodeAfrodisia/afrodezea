@@ -19,13 +19,13 @@ async function getUser(req) {
 }
 
 export default async function handler(req, res) {
+  // ✅ CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end()
-  }
+  // ✅ Preflight check
+  if (req.method === "OPTIONS") return res.status(200).end()
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" })
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" })
   }
 
-  // 🔍 Analyze text
+  // ✅ Analyze text
   const sentimentResult = sentiment.analyze(text)
   const doc = nlp(text)
   const keywords = doc.nouns().concat(doc.adjectives()).out("frequency")
@@ -51,8 +51,8 @@ export default async function handler(req, res) {
     .slice(0, 10)
     .map(k => k.normal.toLowerCase())
 
-  // 🧪 Debug log insert payload
-  const insertPayload = {
+  // ✅ Log before insert
+  const journalPayload = {
     user_id: user.id,
     mood_id: mood_id || null,
     sentiment_score: sentimentResult.score,
@@ -61,22 +61,24 @@ export default async function handler(req, res) {
     created_at: new Date().toISOString(),
   }
 
-  console.log("📦 Insert Payload →", insertPayload)
+  console.log("🔍 Attempting insert with data:", journalPayload)
 
+  // ✅ Insert into journal_analysis
   const { data: analysisData, error: analysisError } = await supabase
     .from("journal_analysis")
-    .insert([insertPayload])
+    .insert([journalPayload])
 
   if (analysisError) {
-    console.error("❌ journal_analysis insert error:", analysisError)
+    console.error("❌ Failed to insert into journal_analysis:", analysisError)
     return res.status(500).json({
       error: "Failed to insert journal analysis",
-      detail: analysisError.message,
+      details: analysisError.message,
     })
   }
 
   console.log("✅ journal_analysis inserted:", analysisData)
 
+  // ✅ Upsert into keyword_tracker
   for (let keyword of topKeywords) {
     try {
       const { error: upsertError } = await supabase
@@ -109,7 +111,7 @@ export default async function handler(req, res) {
         console.warn("⚠️ RPC increment error:", rpcError)
       }
     } catch (err) {
-      console.error("❌ Unexpected error inserting keyword:", err)
+      console.error("❌ Unexpected keyword insert error:", err)
     }
   }
 
