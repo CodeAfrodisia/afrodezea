@@ -11,39 +11,39 @@ const supabase = createClient(
 
 async function getUser(req) {
   const token = req.headers.authorization?.split(" ")[1]
-  if (!token) return null
+  if (!token) {
+    console.error("🔒 No token provided in Authorization header")
+    return null
+  }
 
   const { data: { user }, error } = await supabase.auth.getUser(token)
-  if (error || !user) return null
+  if (error || !user) {
+    console.error("❌ Supabase user fetch error:", error)
+    return null
+  }
+
   return user
 }
 
 export default async function handler(req, res) {
-  // ✅ CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end()
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" })
-  }
+  if (req.method === "OPTIONS") return res.status(200).end()
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
 
   const { text, mood_id = null } = req.body
 
   if (!text || typeof text !== "string" || text.length < 10) {
+    console.warn("📏 Entry too short or invalid:", text)
     return res.status(400).json({ error: "Journal entry must be at least 10 characters." })
   }
 
   const user = await getUser(req)
-  if (!user) {
-    return res.status(401).json({ error: "Unauthorized" })
-  }
+  if (!user) return res.status(401).json({ error: "Unauthorized" })
 
-  // 🧠 Analyze
+  // 🧠 Analyze the text
   const sentimentResult = sentiment.analyze(text)
   const doc = nlp(text)
   const keywords = doc.nouns().concat(doc.adjectives()).out("frequency")
@@ -52,7 +52,9 @@ export default async function handler(req, res) {
     .slice(0, 10)
     .map(k => k.normal.toLowerCase())
 
-  // 📦 journal_analysis insert
+  console.log("🧠 Top keywords:", topKeywords)
+
+  // 🧾 Attempt insert into journal_analysis
   const { data: analysisData, error: analysisError } = await supabase
     .from("journal_analysis")
     .insert([
@@ -63,17 +65,17 @@ export default async function handler(req, res) {
         sentiment_comparative: sentimentResult.comparative,
         top_keywords: topKeywords,
         created_at: new Date().toISOString(),
-      },
+      }
     ])
 
   if (analysisError) {
-    console.error("❌ Failed to insert into journal_analysis:", analysisError)
+    console.error("❌ journal_analysis insert failed:", analysisError)
     return res.status(500).json({ error: "Failed to insert journal analysis" })
   }
 
-  console.log("✅ journal_analysis inserted:", analysisData)
+  console.log("✅ journal_analysis insert successful:", analysisData)
 
-  // 🧠 keyword_tracker insert
+  // 📈 Insert keywords into keyword_tracker
   for (let keyword of topKeywords) {
     try {
       const { error: upsertError } = await supabase
@@ -93,10 +95,8 @@ export default async function handler(req, res) {
         )
 
       if (upsertError) {
-        console.warn("⚠️ Keyword upsert error:", upsertError)
+        console.warn("⚠️ Upsert failed for keyword:", keyword, upsertError)
         continue
-      } else {
-        console.log(`✅ Keyword upserted: "${keyword}"`)
       }
 
       const { error: rpcError } = await supabase.rpc("increment_keyword_frequency", {
@@ -105,18 +105,18 @@ export default async function handler(req, res) {
       })
 
       if (rpcError) {
-        console.warn("⚠️ RPC increment error:", rpcError)
+        console.warn("⚠️ RPC increment failed for keyword:", keyword, rpcError)
       } else {
-        console.log(`🧠 Frequency incremented for keyword: "${keyword}"`)
+        console.log(`🔁 Frequency incremented for keyword: ${keyword}`)
       }
     } catch (err) {
-      console.error("❌ Unexpected error inserting keyword:", err)
+      console.error("❌ Unexpected keyword insert error:", err)
     }
   }
 
   return res.status(200).json({
     sentiment: sentimentResult,
     keywords: topKeywords,
-    userId: user.id,
+    userId: user.id
   })
 }
