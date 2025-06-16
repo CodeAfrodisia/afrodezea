@@ -54,52 +54,65 @@ export default async function handler(req, res) {
     .map(k => k.normal.toLowerCase())
 
  // Save to journal_analysis
-const { data: analysisData, error: analysisError } = await supabase
-.from("journal_analysis")
-.insert([
-  {
-    user_id: user.id,
-    mood_id: mood_id || null,
-    sentiment_score: sentimentResult.score,
-    sentiment_comparative: sentimentResult.comparative,
-    top_keywords: topKeywords,
-    created_at: new Date().toISOString(),
-  },
-])
+ const { data: analysisData, error: analysisError } = await supabase
+ .from("journal_analysis")
+ .insert([
+   {
+     user_id: user.id,
+     mood_id: mood_id || null,
+     sentiment_score: sentimentResult.score,
+     sentiment_comparative: sentimentResult.comparative,
+     top_keywords: topKeywords,
+     created_at: new Date().toISOString(),
+   },
+ ]);
 
 if (analysisError) {
-console.error("❌ Failed to insert into journal_analysis:", analysisError)
-} else {
-console.log("✅ journal_analysis entry created:", analysisData)
+ console.error("❌ Failed to insert into journal_analysis:", analysisError);
+ return res.status(500).json({ error: "Failed to insert journal analysis" });
 }
+
+console.log("✅ journal_analysis inserted:", analysisData);
+
 
 
   // Upsert to keyword_tracker
   for (let keyword of topKeywords) {
-    await supabase
-      .from("keyword_tracker")
-      .upsert({
-        user_id: user.id,
-        keyword: keyword,
-        frequency: 1,
-        last_used: new Date().toISOString(),
-        created_at: new Date().toISOString()
-      }, {
-        onConflict: "user_id,keyword",
-        ignoreDuplicates: false
-      })
-      .then(async ({ error }) => {
-        if (!error) {
-          // Increment frequency if exists
-          await supabase.rpc("increment_keyword_frequency", {
-            p_user_id: user.id,
-            p_keyword: keyword
-          })
-        } else {
-          console.warn("Keyword insert error:", error)
-        }
-      })
+    try {
+      const { error: upsertError } = await supabase
+        .from("keyword_tracker")
+        .upsert(
+          {
+            user_id: user.id,
+            keyword: keyword,
+            frequency: 1,
+            last_used: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "user_id,keyword",
+            ignoreDuplicates: false,
+          }
+        );
+  
+      if (upsertError) {
+        console.warn("⚠️ Keyword upsert error:", upsertError);
+        continue;
+      }
+  
+      const { error: rpcError } = await supabase.rpc("increment_keyword_frequency", {
+        p_user_id: user.id,
+        p_keyword: keyword,
+      });
+  
+      if (rpcError) {
+        console.warn("⚠️ RPC increment error:", rpcError);
+      }
+    } catch (err) {
+      console.error("❌ Unexpected error inserting keyword:", err);
+    }
   }
+  
 
   return res.status(200).json({
     sentiment: sentimentResult,
