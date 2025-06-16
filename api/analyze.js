@@ -5,7 +5,6 @@ import { createClient } from "@supabase/supabase-js"
 const sentiment = new Sentiment()
 
 export default async function handler(req, res) {
-  // ✅ CORS Headers
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -16,15 +15,12 @@ export default async function handler(req, res) {
   const token = req.headers.authorization?.split(" ")[1]
   if (!token) return res.status(401).json({ error: "Unauthorized – no token" })
 
-  // ✅ Scoped Supabase client WITH token (for RLS)
   const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_ANON_KEY,
     {
       global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` }
       }
     }
   )
@@ -34,18 +30,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Journal entry must be at least 10 characters." })
   }
 
-  // 🔑 Get user context from token
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser()
-
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
   if (userError || !user) {
     console.error("❌ User fetch failed:", userError)
     return res.status(401).json({ error: "Unauthorized – invalid token" })
   }
 
-  // 🧠 Analyze the reflection
   const sentimentResult = sentiment.analyze(text)
   const doc = nlp(text)
   const keywords = doc.nouns().concat(doc.adjectives()).out("frequency")
@@ -54,9 +44,8 @@ export default async function handler(req, res) {
     .slice(0, 10)
     .map(k => k.normal.toLowerCase())
 
-  console.log("🧠 Top keywords:", topKeywords)
+  console.log("🧠 Top keywords extracted:", topKeywords)
 
-  // 📝 Insert into journal_analysis
   const { data: analysisData, error: analysisError } = await supabase
     .from("journal_analysis")
     .insert([
@@ -67,40 +56,35 @@ export default async function handler(req, res) {
         sentiment_comparative: sentimentResult.comparative,
         top_keywords: topKeywords,
         created_at: new Date().toISOString(),
-      },
+      }
     ])
 
   if (analysisError) {
-    console.error("❌ Failed to insert journal_analysis:", analysisError)
+    console.error("❌ Failed to insert into journal_analysis:", analysisError)
     return res.status(500).json({ error: "Failed to insert journal analysis" })
   }
 
-  console.log("✅ journal_analysis inserted:", analysisData)
+  console.log("✅ Journal analysis inserted")
 
-  // 🔁 Upsert into keyword_tracker + call RPC
-  for (let keyword of topKeywords) {
+  // 📌 Log and insert each keyword individually
+  for (const keyword of topKeywords) {
     try {
-      const { error: upsertError } = await supabase
-        .from("keyword_tracker")
-        .upsert(
-          {
-            user_id: user.id,
-            keyword: keyword,
-            frequency: 1,
-            last_used: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-          },
-          {
-            onConflict: "user_id,keyword",
-            ignoreDuplicates: false,
-          }
-        )
+      console.log("📌 Inserting keyword:", keyword)
 
-      if (upsertError) {
-        console.warn(`⚠️ Upsert failed for keyword '${keyword}':`, upsertError)
-        continue
+      const { error: insertError } = await supabase
+        .from("keyword_tracker")
+        .insert({
+          user_id: user.id,
+          keyword,
+          frequency: 1,
+          last_used: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        })
+
+      if (insertError) {
+        console.warn("⚠️ Keyword insert error for", keyword, ":", insertError)
       } else {
-        console.log(`✅ Keyword upserted: ${keyword}`)
+        console.log("✅ Keyword inserted successfully:", keyword)
       }
 
       const { error: rpcError } = await supabase.rpc("increment_keyword_frequency", {
@@ -109,19 +93,19 @@ export default async function handler(req, res) {
       })
 
       if (rpcError) {
-        console.warn(`⚠️ RPC increment failed for keyword '${keyword}':`, rpcError)
+        console.warn("⚠️ RPC increment failed for:", keyword, rpcError)
       } else {
-        console.log(`🔁 Frequency incremented for keyword: ${keyword}`)
+        console.log("🔁 Frequency incremented for keyword:", keyword)
       }
 
     } catch (err) {
-      console.error("❌ Unexpected keyword insert error:", err)
+      console.error("❌ Unexpected error inserting keyword:", keyword, err)
     }
   }
 
   return res.status(200).json({
     sentiment: sentimentResult,
     keywords: topKeywords,
-    userId: user.id
+    userId: user.id,
   })
 }
