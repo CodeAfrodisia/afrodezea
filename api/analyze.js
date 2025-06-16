@@ -19,12 +19,10 @@ async function getUser(req) {
 }
 
 export default async function handler(req, res) {
-  // ✅ Add CORS headers for every request
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-  // ✅ Handle preflight request
   if (req.method === "OPTIONS") {
     return res.status(200).end()
   }
@@ -44,7 +42,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" })
   }
 
-  // Analyze text
+  // 🔍 Analyze text
   const sentimentResult = sentiment.analyze(text)
   const doc = nlp(text)
   const keywords = doc.nouns().concat(doc.adjectives()).out("frequency")
@@ -53,28 +51,32 @@ export default async function handler(req, res) {
     .slice(0, 10)
     .map(k => k.normal.toLowerCase())
 
-  // Save to journal_analysis
+  // 🧪 Debug log insert payload
+  const insertPayload = {
+    user_id: user.id,
+    mood_id: mood_id || null,
+    sentiment_score: sentimentResult.score,
+    sentiment_comparative: sentimentResult.comparative,
+    top_keywords: topKeywords,
+    created_at: new Date().toISOString(),
+  }
+
+  console.log("📦 Insert Payload →", insertPayload)
+
   const { data: analysisData, error: analysisError } = await supabase
     .from("journal_analysis")
-    .insert([
-      {
-        user_id: user.id,
-        mood_id: mood_id || null,
-        sentiment_score: sentimentResult.score,
-        sentiment_comparative: sentimentResult.comparative,
-        top_keywords: topKeywords,
-        created_at: new Date().toISOString(),
-      },
-    ])
+    .insert([insertPayload])
 
   if (analysisError) {
-    console.error("❌ Failed to insert into journal_analysis:", analysisError)
-    return res.status(500).json({ error: "Failed to insert journal analysis" })
+    console.error("❌ journal_analysis insert error:", analysisError)
+    return res.status(500).json({
+      error: "Failed to insert journal analysis",
+      detail: analysisError.message,
+    })
   }
 
   console.log("✅ journal_analysis inserted:", analysisData)
 
-  // Upsert to keyword_tracker
   for (let keyword of topKeywords) {
     try {
       const { error: upsertError } = await supabase
@@ -88,7 +90,8 @@ export default async function handler(req, res) {
             created_at: new Date().toISOString(),
           },
           {
-            onConflict: ["user_id", "keyword"],
+            onConflict: "user_id,keyword",
+            ignoreDuplicates: false,
           }
         )
 
