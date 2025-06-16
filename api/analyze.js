@@ -53,23 +53,26 @@ export default async function handler(req, res) {
     .slice(0, 10)
     .map(k => k.normal.toLowerCase())
 
-  // Save to journal_analysis
-  const { data: analysisData, error: analysisError } = await supabase
-    .from("journal_analysis")
-    .insert([
-      {
-        user_id: user.id,
-        mood_id: mood_id || null,
-        sentiment_score: sentimentResult.score,
-        sentiment_comparative: sentimentResult.comparative,
-        top_keywords: topKeywords,
-        created_at: new Date().toISOString()
-      }
-    ])
+ // Save to journal_analysis
+const { data: analysisData, error: analysisError } = await supabase
+.from("journal_analysis")
+.insert([
+  {
+    user_id: user.id,
+    mood_id: mood_id || null,
+    sentiment_score: sentimentResult.score,
+    sentiment_comparative: sentimentResult.comparative,
+    top_keywords: topKeywords,
+    created_at: new Date().toISOString(),
+  },
+])
 
-  if (analysisError) {
-    console.error("Failed to insert into journal_analysis:", analysisError)
-  }
+if (analysisError) {
+console.error("❌ Failed to insert into journal_analysis:", analysisError)
+} else {
+console.log("✅ journal_analysis entry created:", analysisData)
+}
+
 
   // Upsert to keyword_tracker
   for (let keyword of topKeywords) {
