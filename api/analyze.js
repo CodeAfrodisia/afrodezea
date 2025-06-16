@@ -35,8 +35,8 @@ export default async function handler(req, res) {
 
   const { text, mood_id = null } = req.body
 
-  if (!text || typeof text !== "string" || text.length < 40) {
-    return res.status(400).json({ error: "Journal entry must be at least 40 characters." })
+  if (!text || typeof text !== "string" || text.length < 10) {
+    return res.status(400).json({ error: "Journal entry must be at least 10 characters." })
   }
 
   const user = await getUser(req)
