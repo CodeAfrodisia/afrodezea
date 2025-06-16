@@ -4,45 +4,46 @@ import { createClient } from "@supabase/supabase-js"
 
 const sentiment = new Sentiment()
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-)
-
-async function getUser(req) {
-  const token = req.headers.authorization?.split(" ")[1]
-  if (!token) return null
-
-  const { data: { user }, error } = await supabase.auth.getUser(token)
-  if (error || !user) return null
-  return user
-}
-
 export default async function handler(req, res) {
-  // ✅ CORS headers
+  // ✅ Add CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-  // ✅ Preflight check
   if (req.method === "OPTIONS") return res.status(200).end()
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" })
-  }
+  const token = req.headers.authorization?.split(" ")[1]
+  if (!token) return res.status(401).json({ error: "Unauthorized – no token" })
+
+  // ⛩️ Create Supabase client scoped to this user
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY,
+    {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    }
+  )
 
   const { text, mood_id = null } = req.body
-
   if (!text || typeof text !== "string" || text.length < 10) {
     return res.status(400).json({ error: "Journal entry must be at least 10 characters." })
   }
 
-  const user = await getUser(req)
-  if (!user) {
-    return res.status(401).json({ error: "Unauthorized" })
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    console.error("❌ User fetch failed:", userError)
+    return res.status(401).json({ error: "Unauthorized – invalid token" })
   }
 
-  // ✅ Analyze text
   const sentimentResult = sentiment.analyze(text)
   const doc = nlp(text)
   const keywords = doc.nouns().concat(doc.adjectives()).out("frequency")
@@ -51,34 +52,24 @@ export default async function handler(req, res) {
     .slice(0, 10)
     .map(k => k.normal.toLowerCase())
 
-  // ✅ Log before insert
-  const journalPayload = {
-    user_id: user.id,
-    mood_id: mood_id || null,
-    sentiment_score: sentimentResult.score,
-    sentiment_comparative: sentimentResult.comparative,
-    top_keywords: topKeywords,
-    created_at: new Date().toISOString(),
-  }
-
-  console.log("🔍 Attempting insert with data:", journalPayload)
-
-  // ✅ Insert into journal_analysis
   const { data: analysisData, error: analysisError } = await supabase
     .from("journal_analysis")
-    .insert([journalPayload])
+    .insert([
+      {
+        user_id: user.id,
+        mood_id: mood_id || null,
+        sentiment_score: sentimentResult.score,
+        sentiment_comparative: sentimentResult.comparative,
+        top_keywords: topKeywords,
+        created_at: new Date().toISOString(),
+      },
+    ])
 
   if (analysisError) {
     console.error("❌ Failed to insert into journal_analysis:", analysisError)
-    return res.status(500).json({
-      error: "Failed to insert journal analysis",
-      details: analysisError.message,
-    })
+    return res.status(500).json({ error: "Failed to insert journal analysis" })
   }
 
-  console.log("✅ journal_analysis inserted:", analysisData)
-
-  // ✅ Upsert into keyword_tracker
   for (let keyword of topKeywords) {
     try {
       const { error: upsertError } = await supabase
@@ -111,7 +102,7 @@ export default async function handler(req, res) {
         console.warn("⚠️ RPC increment error:", rpcError)
       }
     } catch (err) {
-      console.error("❌ Unexpected keyword insert error:", err)
+      console.error("❌ Unexpected error inserting keyword:", err)
     }
   }
 
