@@ -5,12 +5,24 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "node api/test.js",
-    "build": "echo 'No build step needed'"
+    "dev": "vite",
+    "build": "vite build && node ./scripts/generate-sitemap.mjs",
+    "preview": "vite preview --port 4173"
+    
   },
   "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
+    "@supabase/supabase-js": "^2.39.5",
+    "classnames": "^2.5.1",
     "compromise": "^14.0.0",
-    "sentiment": "^5.0.2",
-    "@supabase/supabase-js": "^2.39.5"
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-helmet-async": "^2.0.5",
+    "react-router-dom": "^7.8.0",
+    "recharts": "^3.1.2",
+    "sentiment": "^5.0.2"
+  },
+  "devDependencies": {
+    "vite": "^7.1.2"
   }
 }

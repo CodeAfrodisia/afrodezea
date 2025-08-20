@@ -1,0 +1,1 @@
+import{R as e,L as t}from"./index-D3n6H1Cv.js";function o(){return e.createElement("div",{className:"container",style:{padding:24}},e.createElement("h1",null,"Page not found"),e.createElement("p",null,"The page you’re looking for doesn’t exist."),e.createElement(t,{className:"btn btn--gold",to:"/"},"Go home"))}export{o as default};

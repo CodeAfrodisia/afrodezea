@@ -1,0 +1,29 @@
+:root {
+  /* Brand Core */
+  --color-plum: #301727;          /* Imperial Plum */
+  --color-gold: #D4AF37;          /* Royal Gold */
+  --color-black: #000000;         /* Deep Black */
+
+  /* Supporting Shades */
+  --color-shadow: #1E0F19;        /* Velvet Shadow */
+  --color-champagne: #F4E9D9;     /* Champagne Mist */
+  --color-gray: #444444;          /* Graphite Gray */
+
+  /* Interaction States */
+  --color-gold-hover: #B89027;    /* Darker Gold for hover */
+  --color-plum-hover: #25111C;    /* Deeper Plum on hover */
+  --color-shadow-hover: #150A12;  /* Slightly darker Velvet Shadow */
+
+  /* Text Colors */
+  --text-primary: var(--color-black);
+  --text-on-dark: var(--color-champagne);
+  --text-on-gold: var(--color-black);
+  --text-secondary: var(--color-gray);
+
+  /* Background Colors */
+  --bg-primary: var(--color-plum);
+  --bg-secondary: var(--color-shadow);
+  --bg-light: var(--color-champagne);
+  --bg-dark: var(--color-black);
+}
+
