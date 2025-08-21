@@ -5,25 +5,23 @@ import { track } from "../../lib/analytics.js";
 /**
  * Backward-compatible filters component.
  *
- * Required (existing):
+ * Required:
  *  - query: string
  *  - onQueryChange: (string) => void
  *
- * Optional (new):
- *  - selectedTags: string[]                  // e.g. ['floral','woody']
+ * Optional:
+ *  - selectedTags: string[]
  *  - onToggleTag: (tag: string) => void
- *  - minPrice: number | null                 // dollars (UI), convert to cents at page level
+ *  - minPrice: number | null               // dollars
  *  - maxPrice: number | null
  *  - onPriceChange: (min: number|null, max: number|null) => void
  *  - order: 'new' | 'price_asc' | 'price_desc'
  *  - onOrderChange: (value: string) => void
- *  - tagsCatalog: string[]                   // tags to render; defaults to canonical scent set
+ *  - tagsCatalog: string[]
  */
 export default function Filters({
   query,
   onQueryChange,
-
-  // optional enhancements:
   selectedTags,
   onToggleTag,
   minPrice,
@@ -52,10 +50,7 @@ export default function Filters({
     <div className="surface" style={{ padding: 16, borderRadius: 16, display: "grid", gap: 12 }}>
       {/* Search */}
       <div>
-        <label
-          htmlFor="filter-search"
-          style={{ display: "block", marginBottom: 8, color: "var(--text-muted)" }}
-        >
+        <label htmlFor="filter-search" style={{ display: "block", marginBottom: 8, color: "var(--text-muted)" }}>
           Search
         </label>
         <input
@@ -63,12 +58,11 @@ export default function Filters({
           className="input"
           type="search"
           value={query}
-          
           placeholder="Search candles…"
-             onChange={(e) => {
-     onQueryChange(e.target.value);
-     track("search_change", { q: e.target.value });
-   }}
+          onChange={(e) => {
+            onQueryChange(e.target.value);
+            track("search_change", { q: e.target.value });
+          }}
         />
       </div>
 
@@ -81,6 +75,8 @@ export default function Filters({
               type="button"
               className="btn btn--ghost"
               style={{ padding: "2px 8px", fontSize: 12 }}
+              // NOTE: this toggles each active tag off. It’s compatible with your API,
+              // but if onToggleTag ever becomes asynchronous, replace with a dedicated onClearTags.
               onClick={() => selectedTags.forEach((t) => onToggleTag(t))}
               aria-label="Clear selected tags"
               title="Clear selected"
@@ -124,18 +120,18 @@ export default function Filters({
               placeholder="Min"
               value={minPrice ?? ""}
               onChange={(v) => {
-     onPriceChange(v === "" ? null : num(v), maxPrice);
-     track("filter_price_change", { min: v === "" ? null : num(v), max: maxPrice });
-   }}
+                onPriceChange(v === "" ? null : num(v), maxPrice);
+                track("filter_price_change", { min: v === "" ? null : num(v), max: maxPrice });
+              }}
             />
             <span style={{ opacity: 0.6 }}>—</span>
             <PriceInput
               placeholder="Max"
               value={maxPrice ?? ""}
               onChange={(v) => {
-     onPriceChange(minPrice, v === "" ? null : num(v));
-     track("filter_price_change", { min: minPrice, max: v === "" ? null : num(v) });
-   }}
+                onPriceChange(minPrice, v === "" ? null : num(v));
+                track("filter_price_change", { min: minPrice, max: v === "" ? null : num(v) });
+              }}
             />
           </div>
         </div>
@@ -163,7 +159,6 @@ export default function Filters({
   );
 }
 
-// Helpers
 function num(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;

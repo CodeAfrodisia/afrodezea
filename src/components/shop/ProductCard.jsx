@@ -1,6 +1,6 @@
 // src/components/shop/ProductCard.jsx
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useCart } from "../../context/CartContext.jsx";
 import { useWishlist } from "../../context/WishlistContext.jsx";
 import { prefetchProductByHandle } from "../../lib/prefetch.js";
@@ -18,8 +18,8 @@ function formatPrice({ amount, currencyCode }) {
   }
 }
 
-export default function ProductCard({ product, onQuickView }) {
-  const { add } = useCart();
+export default function ProductCard({ product, onQuickView, fromSearch = "", ...rest }) {
+  const { add: addToCart } = useCart();
   const { ids = [], toggle } = useWishlist();
 
   const img = product.image_url
@@ -31,6 +31,14 @@ export default function ProductCard({ product, onQuickView }) {
       amount: (product.price_cents ?? 0) / 100,
       currencyCode: "USD",
     };
+
+// inside ProductCard component, near top
+if (import.meta.env.DEV) {
+  console.debug("[ProductCard] fromSearch:", fromSearch);
+}
+
+
+
 
   const inWish = ids.includes(product.id);
 
@@ -44,9 +52,11 @@ export default function ProductCard({ product, onQuickView }) {
     priceRange: product.priceRange || null,
   };
 
+  const location = useLocation();
   const handlePath = `/product/${product.handle || product.slug}`;
 
   return (
+    
   <div
     className="card"
     style={{
@@ -91,13 +101,15 @@ export default function ProductCard({ product, onQuickView }) {
     {/* Image */}
     <div style={{ aspectRatio: "1 / 1", background: "#0a0a0a" }}>
       {img && (
-        <Link to={handlePath}>
+        <Link to={handlePath}
+        state={{ from: { pathname: "/products", search: fromSearch } }}>
           <img
             src={img.url}
             alt={product.title}
             loading="lazy"
             decoding="async"
             sizes="(max-width: 720px) 50vw, (max-width: 1200px) 33vw, 25vw"
+            
             style={{
               width: "100%",
               height: "100%",
@@ -111,8 +123,11 @@ export default function ProductCard({ product, onQuickView }) {
 
     {/* Body */}
     <div style={{ padding: 14 }}>
+      
       <div style={{ fontWeight: 700, lineHeight: 1.3 }}>
-        <Link to={handlePath} style={{ color: "#eee", textDecoration: "none" }}>
+        <Link to={handlePath} 
+        state={{ from: { pathname: "/products", search: fromSearch } }}
+        style={{ color: "#eee", textDecoration: "none" }}>
           {product.title}
         </Link>
       </div>

@@ -1,7 +1,7 @@
 // src/pages/ProductDetail.jsx
 import React, { useEffect, useRef, useState, useMemo, lazy, Suspense } from "react";
 import { Helmet } from "react-helmet-async";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation, Link } from "react-router-dom";
 
 import { useCart } from "../context/CartContext.jsx";
 import { useWishlist } from "../context/WishlistContext.jsx";
@@ -207,9 +207,34 @@ export default function ProductDetail() {
     } : {}),
   };
 
+const back = location.state?.from; // { pathname, search } if we arrived from Products
+let backHref = "/products";
+if (back && (back.search || back.pathname)) {
+  backHref = `${back.pathname}${back.search || ""}`;
+} else {
+  try {
+    const cached = sessionStorage.getItem("afd:lastProductsSearch");
+    if (cached) backHref = `/products${cached}`;
+  } catch {}
+}
   /* -------------------- Render -------------------- */
   return (
+    
     <div className="container" style={{ padding: 24, display: "grid", gap: 18 }}>
+      <div>
+    {back ? (
+      <Link
+        to={backHref}
+        className="btn btn--ghost"
+        aria-label="Back to results"
+      >
+        ← Back to results
+      </Link>
+    ) : (
+      <Link to="/products" className="btn btn--ghost">← Products</Link>
+    )}
+  </div>
+
       <Helmet>
         <title>{title}</title>
         <meta name="description" content={desc} />

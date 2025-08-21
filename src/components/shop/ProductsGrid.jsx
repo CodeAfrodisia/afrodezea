@@ -1,7 +1,7 @@
 import React from "react";
 import ProductCard from "./ProductCard.jsx";
 
-export default function ProductsGrid({ products = [], onQuickView }) {
+export default function ProductsGrid({ products = [], onQuickView, fromSearch  }) {
   return (
     <div
       className="container"
@@ -13,7 +13,7 @@ export default function ProductsGrid({ products = [], onQuickView }) {
       }}
     >
       {products.map((p) => (
-        <ProductCard key={p.id} product={p} onQuickView={onQuickView} />
+        <ProductCard key={p.id} product={p} onQuickView={onQuickView}  fromSearch={fromSearch} />
       ))}
     </div>
   );
