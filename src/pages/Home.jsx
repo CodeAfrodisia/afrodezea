@@ -1,43 +1,64 @@
 // src/pages/Home.jsx
 import React from "react";
 import { Helmet } from "react-helmet-async";
-import { getSiteOrigin } from "../lib/site.js";
+import { Link } from "react-router-dom";
+import { getSiteOrigin } from "@lib/site.js";
+
+import LogoWithVideoMask from "@components/LogoWithVideoMask.jsx";
+import logoPng from "../../../assets/candle-no-stick.png";
+
+// If the file is in project-root/public/video/candlelight.mp4
+const flameMp4 = "/video/candlelight.mp4";
 
 export default function Home() {
   const origin = getSiteOrigin();
-<Helmet>
-  <link rel="canonical" href={`${origin}/`} />
-</Helmet>
-
-  const title = "Afrodezea — Luxury Candles";
-  const desc =
-    "Discover premium candles with rich scent profiles and refined design.";
-    
 
   return (
     <>
       <Helmet>
-        <title>{title}</title>
-        <meta name="description" content={desc} />
+        <title>Afrodezea — Where Self-Love Begins</title>
+        <meta name="description" content="Welcome to Afrodezea. Where Self-Love Begins." />
         {origin && <link rel="canonical" href={`${origin}/`} />}
-
-        {/* Organization JSON-LD */}
-        <script type="application/ld+json">
-          {JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            name: "Afrodezea",
-            url: origin || undefined,
-            // Replace with your actual logo path when ready:
-            logo: origin ? `${origin}/logo.png` : undefined,
-          })}
-        </script>
       </Helmet>
 
-      <div style={{ padding: 24 }}>
-        <h1 style={{ marginTop: 8 }}>Afrodezea</h1>
-        <p>Welcome. Use the nav to explore products.</p>
-      </div>
+      <main style={root}>
+        <section style={hero} aria-labelledby="home-title">
+          <h1 id="home-title" style={h1}>Welcome to Afrodezea</h1>
+          <p style={tag}>Where Self-Love Begins</p>
+
+          <div style={{ margin: "16px 0 18px" }}>
+            <LogoWithVideoMask
+  logoSrc={logoPng}
+  mp4Src="/video/candlelight.mp4"
+  width="clamp(150px, 16vw, 220px)"
+  aspect={1.55}
+  glass
+  crossfade
+  fadeDuration={0.7}     // tweak 0.5–1.2s to taste
+  videoScale={1.25}
+  videoPosX="50%"
+  videoPosY="60%"
+  debugUnmasked={false}        // ⬅ shows the raw video rectangle
+/>
+
+
+          </div>
+
+          <div style={actions}>
+            <Link to="/login"  style={{ ...btn, ...btnSolid }}>Login</Link>
+            <Link to="/browse" style={{ ...btn, ...btnOutline }}>Continue As Guest</Link>
+          </div>
+        </section>
+      </main>
     </>
   );
 }
+
+const root    = { minHeight: "100vh", display: "grid", placeItems: "center", padding: "clamp(16px,3vw,32px)" };
+const hero    = { textAlign: "center", maxWidth: 880, margin: "0 auto" };
+const h1      = { margin: 0, fontSize: "clamp(28px,6vw,56px)", letterSpacing: "-.02em", lineHeight: 1.1 };
+const tag     = { margin: "10px 0 0", opacity: .9, fontSize: "clamp(16px,2.4vw,22px)" };
+const actions = { display: "flex", gap: 12, justifyContent: "center", marginTop: 18, flexWrap: "wrap" };
+const btn     = { display:"inline-flex", alignItems:"center", justifyContent:"center", padding:"10px 20px", borderRadius:999, textDecoration:"none", fontWeight:500, fontSize:"clamp(14px,1.8vw,16px)" };
+const btnSolid   = { border:"1px solid currentColor" };
+const btnOutline = { border:"1px solid currentColor", background:"transparent" };

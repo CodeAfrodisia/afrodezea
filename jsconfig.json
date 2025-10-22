@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@components/*": ["src/components/*"],
+      "@account/*": ["src/components/account/*"],
+      "@shop/*": ["src/components/shop/*"],
+      "@ui/*": ["src/components/ui/*"],
+      "@context/*": ["src/context/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@lib/*": ["src/lib/*"],
+      "@logic/*": ["src/logic/*"],
+      "@api/*": ["src/pages/api/*"],
+      "@pages/*":      ["src/pages/*"] 
+    }
+  }
+}
+

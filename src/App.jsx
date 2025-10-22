@@ -1,24 +1,40 @@
+// src/App.jsx
 import React, { lazy, Suspense } from "react";
-import { Routes, Route, Navigate, Link } from "react-router-dom";
+import { Routes, Route, Navigate, Link, useParams, NavLink } from "react-router-dom";
 import Profile from "./pages/Profile.jsx";
 
+// ❌ Providers live in main.jsx now
+// import { CartProvider, useCart } from "./context/CartContext.jsx";
+// import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
+// import { WishlistProvider } from "./context/WishlistContext.jsx";
 
-import { CartProvider, useCart } from "./context/CartContext.jsx";
-import CartDrawer from "./components/shop/CartDrawer.jsx";
+// Keep the hooks (components use these)
+import { useCart } from "./context/CartContext.jsx";
+import { useAuth } from "./context/AuthContext.jsx";
+import { useWishlist } from "./context/WishlistContext.jsx";
 
-import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
-import { WishlistProvider, useWishlist } from "./context/WishlistContext.jsx";
-
-import { HelmetProvider, Helmet } from "react-helmet-async";
-import { SITE_URL } from "./lib/site.js"; // if you created this helper
-import { getSiteOrigin, isPreviewEnv } from "./lib/site.js";
+import { Helmet } from "react-helmet-async"; // provider is in main.jsx
+import { SITE_URL, getSiteOrigin, isPreviewEnv } from "./lib/site.js";
 
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import PageBoundary from "./components/PageBoundary.jsx";
+import AccountDashboard from "@components/account/AccountDashboardShell.jsx";
+import ProtectedRoute from "./components/auth/ProtectedRoute.jsx";
+import AccountLink from "./components/auth/AccountLink.jsx";
+import CheckIn from "@pages/CheckIn.jsx";
 
+import ProfilePage from "@pages/ProfilePage.jsx";
+import CartDrawer from "./components/shop/CartDrawer.jsx";
+import PublicFavorites from "@components/account/PublicFavorites.jsx";
+import ProfileNavLink from "@components/nav/ProfileNavLink.jsx";
 
+import QuizzesHub from "@components/quizzes/QuizzesHub.jsx";
+import QuizTakePage from "@pages/QuizTakePage.jsx";
 
+import ThemeToggle from "@components/ThemeToggle.jsx";
+import FooterSmart from "@components/layout/FooterSmart.jsx";
 
+// Lazy pages
 const Home          = lazy(() => import("./pages/Home.jsx"));
 const ProductsPage  = lazy(() => import("./pages/ProductsPage.jsx"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail.jsx"));
@@ -27,18 +43,18 @@ const Login         = lazy(() => import("./pages/Login.jsx"));
 const AdminRatings  = lazy(() => import("./pages/AdminRatings.jsx"));
 const NotFound      = lazy(() => import("./pages/NotFound.jsx"));
 
-
-
-
-/* ---------- Small header controls ---------- */
-
+/* Header controls */
 function WishlistButton() {
-  const { ids } = useWishlist();               // <-- use ids, not items
+  const { ids } = useWishlist();
   const count = (ids || []).length;
   return (
-    <Link to="/wishlist" style={{ marginLeft: 8, color: "#eee" }}>
+    <NavLink
+      to="/wishlist"
+      className={({ isActive }) => (isActive ? "is-active" : undefined)}
+      end
+    >
       Wishlist {count ? `(${count})` : ""}
-    </Link>
+    </NavLink>
   );
 }
 
@@ -47,8 +63,7 @@ function CartButton() {
   const count = (items || []).reduce((n, it) => n + (it.qty || 0), 0);
   return (
     <button
-      className="btn btn--gold"
-      style={{ marginLeft: "auto" }}
+      className="btn btn-outline-gold"
       onClick={() => setOpen(!isOpen)}
       aria-label="Open Bag"
       title="Open Bag"
@@ -65,98 +80,175 @@ function AdminRoute({ children }) {
   return children;
 }
 
-function UserChip() {
-  const { user, signOut } = useAuth();
-  if (!user) return <Link to="/login" style={{ color: "#eee" }}>Sign in</Link>;
-  return (
-    <button
-      onClick={signOut}
-      style={{ background: "transparent", border: "1px solid #333", color: "#eee", padding: "6px 10px", borderRadius: 8 }}
-    >
-      Sign out
-    </button>
-  );
-}
-
 const SHOW_ADMIN = !!import.meta.env.VITE_ADMIN_KEY;
 function AdminLink() {
   const { user } = useAuth();
   if (!SHOW_ADMIN || !user) return null;
-  return <Link to="/admin" style={{ color: "#eee", opacity: .9 }}>Admin</Link>;
-}
-
-/* ---------- App ---------- */
-
-export default function App() {
   return (
-    <HelmetProvider>
-      <AuthProvider>
-        <WishlistProvider>
-          <CartProvider>
-            
-              {/* Site-wide meta defaults */}
-              <Helmet>
-                <meta property="og:site_name" content="Afrodezea" />
-                <meta name="twitter:card" content="summary_large_image" />
-                {isPreviewEnv() && <meta name="robots" content="noindex,nofollow" />}
-                {/* Optional default OG image */}
-                {/* <meta property="og:image" content={`${SITE_URL}/og/default.jpg`} /> */}
-              </Helmet>
-
-              <div style={{ minHeight: "100vh" }}>
-                {/* Top Nav must be inside Router so <Link> has context */}
-                <nav className="nav surface glass">
-                  <Link to="/">Home</Link>
-                  <Link to="/products">Products</Link>
-                  <AdminLink />
-                  <WishlistButton />
-                  <UserChip />
-                  <CartButton />
-                </nav>
-             <ErrorBoundary>
-                <Suspense fallback={null}>
-                  <Routes>
-                    <Route path="/" element={<PageBoundary name="Home">
-          <Home />
-        </PageBoundary>} />
-                    <Route path="/products" element={ <PageBoundary name="Products">
-          <ProductsPage />
-        </PageBoundary>} />
-                    <Route path="/product/:handle" element={<PageBoundary name="Product">
-          <ProductDetail />
-        </PageBoundary>} />
-                    <Route path="/profile/:slug" element={<Profile />} />
-                    <Route path="/wishlist" element={<PageBoundary name="Wishlist">
-          <WishlistPage />
-        </PageBoundary>} />
-                    <Route path="/login" element={<PageBoundary name="Login">
-          <Login />
-        </PageBoundary>} />
-                    
-                    <Route
-                      path="/admin"
-                      element={
-                        <AdminRoute>
-                          <PageBoundary name="Admin">
-            <AdminRatings />
-          </PageBoundary>
-                        </AdminRoute>
-                      }
-                    />
-                   <Route path="*" element={<PageBoundary name="Not Found">
-          <NotFound />
-        </PageBoundary>} />
-                    </Routes>
-                </Suspense>
-              </ErrorBoundary>
-                {/* Lives under CartProvider so it can read cart state */}
-                <CartDrawer />
-              </div>
-            
-          </CartProvider>
-        </WishlistProvider>
-      </AuthProvider>
-    </HelmetProvider>
+    <NavLink
+      to="/admin"
+      className={({ isActive }) => (isActive ? "is-active" : undefined)}
+      end
+    >
+      Admin
+    </NavLink>
   );
 }
 
+function LegacyQuizRedirect() {
+  const { slug } = useParams();
+  return <Navigate to={`/quizzes/${slug}`} replace />;
+}
+
+export default function App() {
+  return (
+    <>
+      {/* Site-wide meta */}
+      <Helmet>
+        <meta property="og:site_name" content="Afrodezea" />
+        <meta name="twitter:card" content="summary_large_image" />
+        {isPreviewEnv() && <meta name="robots" content="noindex,nofollow" />}
+      </Helmet>
+
+      <div style={{ minHeight: "100vh" }}>
+        {/* Top Navigation */}
+        <nav className="topnav">
+          <div className="topnav__inner">
+            <div className="topnav__brand">
+              <Link to="/">Afrodezea</Link>
+            </div>
+
+            <div className="topnav__links">
+              <NavLink
+                to="/products"
+                className={({ isActive }) => (isActive ? "is-active" : undefined)}
+                end
+              >
+                Products
+              </NavLink>
+
+              {/* Wishlist reflects active state */}
+              <WishlistButton />
+
+              {/* These render their own links; update those files to use NavLink for active underline */}
+              <ProfileNavLink />
+              <AccountLink />
+
+              <AdminLink />
+            </div>
+
+            <div className="topnav__actions">
+              <ThemeToggle className="btn-outline-gold" />
+              <CartButton />
+            </div>
+          </div>
+        </nav>
+
+        <ErrorBoundary>
+          {/* 👇 visible fallback for lazy routes */}
+          <Suspense fallback={<div style={{ padding: 24, opacity: 0.8 }}>Loading…</div>}>
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <PageBoundary name="Home">
+                    <Home />
+                  </PageBoundary>
+                }
+              />
+              <Route
+                path="/products"
+                element={
+                  <PageBoundary name="Products">
+                    <ProductsPage />
+                  </PageBoundary>
+                }
+              />
+              <Route
+                path="/product/:handle"
+                element={
+                  <PageBoundary name="Product">
+                    <ProductDetail />
+                  </PageBoundary>
+                }
+              />
+              <Route
+                path="/wishlist"
+                element={
+                  <PageBoundary name="Wishlist">
+                    <WishlistPage />
+                  </PageBoundary>
+                }
+              />
+              <Route
+                path="/login"
+                element={
+                  <PageBoundary name="Login">
+                    <Login />
+                  </PageBoundary>
+                }
+              />
+
+              <Route path="/u/:handle" element={<ProfilePage />} />
+
+              {/* Quizzes */}
+              <Route path="/quizzes" element={<QuizzesHub />} />
+              <Route path="/quizzes/:slug" element={<QuizTakePage />} />
+              <Route path="/q/:slug" element={<LegacyQuizRedirect />} />
+              <Route path="/quiz/:slug" element={<LegacyQuizRedirect />} />
+
+              {/* Protected Account */}
+              <Route
+                path="/account"
+                element={
+                  <ProtectedRoute>
+                    <PageBoundary name="Account Dashboard">
+                      <AccountDashboard />
+                    </PageBoundary>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/account/check-in"
+                element={
+                  <ProtectedRoute>
+                    <PageBoundary name="Daily Check-in">
+                      <CheckIn />
+                    </PageBoundary>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin"
+                element={
+                  <AdminRoute>
+                    <PageBoundary name="Admin">
+                      <AdminRatings />
+                    </PageBoundary>
+                  </AdminRoute>
+                }
+              />
+
+              <Route
+                path="*"
+                element={
+                  <PageBoundary name="Not Found">
+                    <NotFound />
+                  </PageBoundary>
+                }
+              />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
+
+        - {/* <Footer variant="compact" /> */}
++ {/* Smart, page-aware footer (phase 1) */}
++ {/* You can keep your existing <Footer /> around and switch by prop later */}
++ {true && <FooterSmart />}
+
+        <CartDrawer />
+      </div>
+    </>
+  );
+}

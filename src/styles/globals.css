@@ -1,325 +1,1502 @@
-/* -------------------------------------------------------
-   Afrodezea — Global Styles (consolidated)
-   Fonts, palette, luxury buttons, glass, inputs, cards, modal
-   ---------------------------------------------------- */
+/* ===================================================================
+   Afrodezea – Core UI System (themes + flat layers)
+   Themes: charcoal (default), cream
+   Layers: ui-section (L1) → ui-panel (L2) → ui-card (L3)
+   =================================================================== */
 
-/* Google Fonts */
+/* ---------------------------------------------------
+   0) Fonts
+   --------------------------------------------------- */
 @import url('https://fonts.googleapis.com/css2?family=Baskervville:ital@0;1&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
-/* ====== Brand tokens / palette ====== */
-:root{
-  /* brand */
-  --wine: #301727;                 /* primary */
-  --wine-600: #2A1422;
-  --wine-700: #24111D;
-  --gold: #D4AF37;
-  --gold-2: #B89227;
-
-  /* surfaces */
-  --bg: #120b10;                   /* deep base */
-  --surface: #1B0F17;
-  --surface-2: #22121C;
-  --hairline: rgba(255,255,255,.08);
-  --hairline-strong: rgba(255,255,255,.12);
-  --shadow: 0 10px 30px rgba(0,0,0,.35);
-
-  /* text */
-  --ink: #F4F1EE;
-  --text: #EAE6EA;
-  --muted: #C7B7C2;
-
-  /* focus ring */
-  --focus-ring: 0 0 0 2px rgba(212,175,55,.55), 0 0 0 4px rgba(212,175,55,.18);
-
-  /* glass */
-  --glass: rgba(255,255,255,.06);
-  --glass-stroke: rgba(212,175,55,.28);
-
-  /* gold ring */
-  --ring: rgba(212,175,55,.28);
-}
-
-/* ====== Core reset ====== */
+/* ---------------------------------------------------
+   1) Base reset / primitives
+   --------------------------------------------------- */
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 html { scroll-behavior: smooth; }
-
-body{
-  margin: 0;
-  background:
-    radial-gradient(1200px 600px at 20% 0%, rgba(48,23,39,.22), transparent 60%),
-    radial-gradient(900px 600px at 80% 0%, rgba(212,175,55,.08), transparent 60%),
-    linear-gradient(180deg, #0d0a0c 0%, var(--bg) 100%);
-  color: var(--text);
-  font-family: "Cormorant Garamond", serif; /* body */
-  font-size: 16px;
-  line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a { text-decoration: none; color: inherit; }
+a { color: inherit; text-decoration: none; }
 button { font: inherit; cursor: pointer; }
+img, svg { display: block; max-width: 100%; }
 
-/* Selection */
-::selection{ background: rgba(212,175,55,.18); color: var(--text); }
+::selection { background: rgba(212,175,55,.18); color: var(--c-ink); }
 
-/* ====== Typography ====== */
-h1, h2, h3, .heading{
-  font-family: "Baskervville", serif;  /* display */
-  letter-spacing: .3px;
-  color: var(--text);
-  margin: 0 0 .5rem;
-}
-h1{ font-size: clamp(32px, 4.5vw, 48px); line-height: 1.12; }
-h2{ font-size: clamp(24px, 3.2vw, 34px); line-height: 1.16; }
-h3{ font-size: clamp(18px, 2.4vw, 24px); line-height: 1.2; }
+/* ---------------------------------------------------
+   2) Brand tokens (not themed)
+   --------------------------------------------------- */
+:root{
+  --brand-wine: #2A1625;
+  --brand-wine2:#241320;
+  --brand-gold:#D4AF37;
+  --brand-gold-600:#B98E2D;
 
-p, li, small, label, input, textarea{
-  font-family: "Cormorant Garamond", serif;
-  letter-spacing: .15px;
-}
-.lead{ font-size: 18px; color: var(--muted); }
-
-/* ====== Surfaces & glass ====== */
-.surface{
-  background: linear-gradient(180deg, var(--surface), var(--surface-2));
-  border: 1px solid var(--hairline);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-}
-.surface--elevated{
-  background: linear-gradient(180deg, var(--wine-700), var(--wine-600));
-  border: 1px solid var(--hairline-strong);
-  box-shadow: 0 18px 50px rgba(0,0,0,.45), 0 0 0 1px rgba(212,175,55,.06);
+  --focus-ring: 0 0 0 3px rgba(212,175,55,.45);
+  --rule-gold-grad: linear-gradient(
+    90deg,
+    rgba(212,175,55,0) 0%,
+    rgba(212,175,55,.6) 40%,
+    rgba(212,175,55,0) 100%
+  );
 }
 
-/* General glass utility */
-.glass{
-  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
-  border: 1px solid var(--glass-stroke);
-  border-radius: 16px;
-  box-shadow: 0 30px 80px rgba(0,0,0,.55);
-  backdrop-filter: blur(14px);
+/* ---------------------------------------------------
+   3) Theme tokens (prefixed c-). Default = charcoal.
+   --------------------------------------------------- */
+:root{
+  /* charcoal defaults (for SSR / no data-theme) */
+  --c-bg:#121212;
+  --c-ink:#F9F9F9;
+  --c-ink-muted:#B8AEB6;
+  --c-head:#FFF2E0;
+
+  --c-surface-1:#1A0F16; /* L1 */
+  --c-surface-2:#241320; /* L2 */
+  --c-card:#FFFFFF;      /* L3 */
+
+  --c-border-subtle:#2E222A;
+  --c-border-strong:#3A2C32;
+
+  --elev-1:0 10px 26px rgba(0,0,0,.28);
+  --elev-2:0 14px 34px rgba(0,0,0,.35);
+  --elev-3:0 18px 42px rgba(0,0,0,.42);
+
+  --c-gold:var(--brand-gold);
+  --c-focus:var(--focus-ring);
+  --e2:var(--elev-2);
+
+  color-scheme: dark;
 }
 
-/* Sticky/overlay glass header (e.g., modal header) */
-.glass-header{
-  position: sticky; top: 0;
-  display: flex; align-items: center; gap: 12px; justify-content: space-between;
-  padding: 14px 16px;
-  background: linear-gradient(180deg, rgba(48,23,39,.55), rgba(48,23,39,.22));
-  border-bottom: 1px solid rgba(212,175,55,.25);
-  backdrop-filter: blur(18px);
-  z-index: 2;
+/* === THEME: CHARCOAL =================================================== */
+:root[data-theme="charcoal"]{
+  --c-bg:#121212;
+  --c-ink:#F9F9F9;
+  --c-ink-muted:#B8AEB6;
+  --c-head:#FFF2E0;
+
+  --c-surface-1:#1A0F16;
+  --c-surface-2:#241320;
+  --c-card:#FFFFFF;
+
+  --c-border-subtle:#2E222A;
+  --c-border-strong:#3A2C32;
+
+  --elev-1:0 10px 26px rgba(0,0,0,.28);
+  --elev-2:0 14px 34px rgba(0,0,0,.35);
+  --elev-3:0 18px 42px rgba(0,0,0,.42);
+
+  --c-gold:var(--brand-gold);
+  --c-focus:var(--focus-ring);
+  --e2:var(--elev-2);
+
+  color-scheme: dark;
 }
 
-/* ====== Nav ====== */
-.nav{
-  position: sticky; top: 0; z-index: 40;
-  display: flex; align-items: center; gap: 20px;
-  padding: 14px 20px;
-  border-radius: 0 0 16px 16px;
-  border-bottom: 1px solid var(--hairline-strong);
-}
-.nav a{ opacity: .95; }
-.nav a:hover{ opacity: 1; }
+/* === THEME: CREAM (standalone; no inheritance) ========================= */
+:root[data-theme="cream"]{
+  /* base + text */
+  --c-bg:#F7F4ED;      /* foundation */
+  --c-ink:#2A1C1C;     /* espresso */
+  --c-ink-muted:#5C4E4E;
+  --c-head:#301727;    /* plum headers */
 
-/* ====== Buttons ====== */
-/* Base button */
-.btn{
-  display: inline-flex; align-items: center; justify-content: center;
-  gap: .5rem;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--hairline);
-  background: #1a1a1a;
-  color: var(--text);
-  font-weight: 700;
-  letter-spacing: .2px;
-  transition: transform .12s ease, box-shadow .12s ease, background .12s ease, color .12s ease;
-  box-shadow: 0 2px 10px rgba(0,0,0,.35);
-}
-.btn:hover{ transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,.35); }
-.btn:focus-visible{ outline: none; box-shadow: var(--focus-ring); }
+  /* surfaces */
+  --c-surface-1:#F2ECE3; /* L1 */
+  --c-surface-2:#E9E1D8; /* L2 */
+  --c-card:#DFD7CE;      /* L3 */
 
-/* Variant: gold — two class names supported */
-.btn--gold,
-.btn-gold{
-  background: linear-gradient(145deg, var(--gold), var(--gold-2));
-  color: #111;
-  border-color: rgba(212,175,55,.45);
-  box-shadow: 0 6px 18px rgba(212,175,55,.25);
-}
-.btn--gold:hover,
-.btn-gold:hover{
-  background: linear-gradient(145deg, #e6c85e, var(--gold));
+  /* lines */
+  --c-border-subtle:#E1D8C8;
+  --c-border-strong:#D8C8AF;
+
+  /* elevation (warm) */
+  --elev-1:0 4px 10px rgba(48,23,39,.06);
+  --elev-2:0 8px 20px rgba(48,23,39,.10);
+  --elev-3:0 12px 28px rgba(48,23,39,.12);
+
+  /* links */
+  --c-link:#613A60;
+  --c-link-hover:#4B1F49;
+
+  --c-gold:var(--brand-gold);
+  --c-focus:0 0 0 3px rgba(212,175,55,.35);
+
+  color-scheme: light;
 }
 
-/* Variant: ghost/dark */
-.btn--ghost{
-  background: transparent;
-  border-color: var(--hairline);
-  color: var(--text);
+/* ---------------------------------------------------
+   4) App chrome / typography
+   --------------------------------------------------- */
+body{
+  margin:0;
+  background:var(--c-bg);
+  color:var(--c-ink);
+  font-family:"Cormorant Garamond", serif;
+  font-size:18px;
+  line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
 }
 
-/* Icon-style */
-.btn--icon{
-  width: 36px; height: 36px; border-radius: 999px;
-  display: grid; place-items: center;
-  border: 1px solid rgba(212,175,55,.35);
-  background: rgba(0,0,0,.25);
-  color: var(--ink);
+/* Atmosphere */
+:root[data-theme="charcoal"] body:not(.no-atmo)::before{
+  content:"";
+  position:fixed; inset:0; pointer-events:none;
+  background: radial-gradient(1200px 420px at 50% -120px, rgba(48,23,39,.16), transparent 60%);
+}
+:root[data-theme="charcoal"] body:not(.no-atmo){
+  background:
+    radial-gradient(1200px 600px at 20% 0%, rgba(48,23,39,.18), transparent 60%),
+    radial-gradient(900px 600px at 80% 0%, rgba(212,175,55,.06), transparent 60%),
+    linear-gradient(180deg, #0d0a0c 0%, var(--c-bg) 100%);
+}
+:root[data-theme="cream"] body:not(.no-atmo){
+  background:
+    radial-gradient(1000px 480px at 50% -140px, rgba(212,175,55,.06), transparent 60%),
+    var(--c-bg);
 }
 
-/* ====== Inputs ====== */
+/* Headings */
+h1,h2,h3,.heading{ font-family:"Baskervville", serif; letter-spacing:.2px; color:var(--c-head); margin:0 0 .5rem; }
+h1{ font-size:clamp(32px,4.5vw,48px); line-height:1.12; }
+h2{ font-size:clamp(24px,3.2vw,34px); line-height:1.16; }
+h3{ font-size:clamp(18px,2.4vw,24px); line-height:1.2; }
+.muted,.hint,.kpi-sub{ color:var(--c-ink-muted); }
+
+/* ---------------------------------------------------
+   5) Navigation (top bar) + Tabs
+   --------------------------------------------------- */
+.topnav{
+  position:sticky; top:0; z-index:100;
+  backdrop-filter:saturate(120%) blur(6px);
+  box-shadow: var(--e2), inset 0 -1px 0 rgba(255,255,255,.04);
+}
+.topnav::after{ content:""; display:block; height:1px; background:var(--rule-gold-grad); }
+
+.topnav__row,.topnav__inner{
+  max-width:1440px; margin:0 auto; padding:10px 16px;
+  display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:16px;
+}
+.topnav__brand{ justify-self:start; display:inline-flex; align-items:center; gap:8px; font-weight:700; letter-spacing:.2px; }
+.topnav__brand a{ font-family:"Baskervville", serif; font-size:18px; letter-spacing:.3px; color:var(--brand-gold); }
+.topnav__links{ justify-self:center; display:flex; align-items:center; gap:18px; list-style:none; margin:0; padding:0; }
+.topnav__links a{ display:block; padding:6px 8px; border-radius:8px; color:var(--c-ink); opacity:.95; transition: background .15s ease, opacity .15s ease; }
+.topnav__links a:hover{ background:rgba(255,255,255,.05); opacity:1; }
+.topnav__actions{ justify-self:end; display:flex; align-items:center; gap:10px; }
+
+.topnav .chip,.topnav .btn-outline-gold{
+  border-radius:12px; padding:6px 10px; background:transparent; color:var(--brand-gold);
+  border:1px solid rgba(212,175,55,.55);
+}
+.topnav a{ opacity:.95; } .topnav a:hover{ opacity:1; }
+
+/* Tabs */
+.ui-tabs{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--c-border-subtle); }
+.ui-tabs__btn{
+  appearance:none; background:transparent; color:color-mix(in srgb, var(--c-ink) 86%, transparent);
+  border:1px solid transparent; border-radius:12px; padding:8px 12px; line-height:1; white-space:nowrap;
+  transition: color .15s ease, border-color .15s ease, background .15s ease; position:relative;
+}
+.ui-tabs__btn:hover{ border-color: color-mix(in srgb, var(--c-gold) 35%, transparent); }
+.ui-tabs__btn:focus-visible{ outline:none; box-shadow: var(--c-focus); }
+.ui-tabs__btn[aria-selected="true"], .ui-tabs__btn[data-selected="true"]{ color:var(--c-gold); }
+.ui-tabs__btn[aria-selected="true"]::after, .ui-tabs__btn[data-selected="true"]::after{
+  content:""; position:absolute; left:6px; right:6px; bottom:-10px; height:1px;
+  background: linear-gradient(90deg, rgba(212,175,55,0) 0%, rgba(212,175,55,.75) 40%, rgba(212,175,55,0) 100%);
+  transform:scaleX(.2); transform-origin:center; transition:transform .18s ease;
+}
+.ui-tabs__btn[aria-selected="true"]::after, .ui-tabs__btn[data-selected="true"]::after{ transform:scaleX(1); }
+
+.tabsbar{ display:flex; align-items:center; gap:8px; padding:8px 16px; border-bottom:1px solid var(--c-border-subtle); background:var(--c-bg); }
+.tabbtn{ appearance:none; border:1px solid var(--c-border-subtle); background:transparent; color:var(--c-ink); padding:8px 12px; border-radius:10px; transition:border-color .15s ease, color .15s ease; }
+.tabbtn:hover{ border-color: rgba(212,175,55,.35); }
+.tabbtn[aria-selected="true"]{ color:var(--c-gold); border-color:rgba(212,175,55,.55); position:relative; }
+.tabbtn[aria-selected="true"]::after{
+  content:""; position:absolute; left:8px; right:8px; bottom:-9px; height:1px;
+  background: linear-gradient(90deg, rgba(212,175,55,0) 0%, rgba(212,175,55,.75) 40%, rgba(212,175,55,0) 100%);
+}
+
+/* THEME-SPECIFIC NAV COLORS */
+:root[data-theme="charcoal"] .topnav{
+  background: color-mix(in srgb, var(--brand-wine2) 90%, #000 10%);
+  border-bottom:1px solid color-mix(in srgb, var(--brand-wine2) 70%, #000 30%);
+  color: var(--c-ink);
+}
+:root[data-theme="cream"] .topnav{
+  background: color-mix(in srgb, var(--c-bg) 85%, var(--brand-wine) 15%);
+  border-bottom:1px solid var(--c-border-strong);
+  color: var(--c-ink);
+}
+
+/* ---------------------------------------------------
+   6) Buttons
+   --------------------------------------------------- */
+.btn{ display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:12px; border:1px solid transparent; transition: all .18s ease; transform: translateY(0); }
+.btn:focus-visible{ outline:none; box-shadow: var(--c-focus); }
+
+.btn-wine{ background:var(--brand-wine); color:#F9F6F0; border:1px solid color-mix(in srgb, var(--brand-wine) 70%, #000 30%); box-shadow:var(--elev-1); }
+.btn-wine:hover{ border-color:var(--brand-gold); }
+
+.btn-charcoal{ background:#1B1B1B; color:var(--c-ink); border:1px solid var(--c-border-subtle); box-shadow:var(--elev-1); }
+.btn-charcoal:hover{ border-color:var(--brand-gold); }
+
+/* Cream: retire “charcoal” look and make it plum */
+:root[data-theme="cream"] .btn-charcoal{
+  background:var(--brand-wine); color:#F7F4ED; border-color: color-mix(in srgb, var(--brand-wine) 70%, #000 30%);
+}
+
+.btn-outline-gold{ background:transparent; color:var(--brand-gold); border:1px solid rgba(212,175,55,.55); }
+.btn-outline-gold:hover{ background: rgba(212,175,55,.08); }
+
+/* generic hover/active except .btn-action */
+.btn:not(.btn-action):hover{ background: rgba(212,175,55,.15); border-color:#d4af37; transform: translateY(-1px); }
+.btn:not(.btn-action):active{ transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0,0,0,.35); }
+
+.btn--gold:hover{ background:#e6c74a; color:#121212; transform:translateY(-2px); box-shadow:0 0 6px rgba(212,175,55,.6); }
+.btn--gold:active{ background:#cfae33; transform:translateY(1px); box-shadow: inset 0 2px 6px rgba(0,0,0,.45); }
+
+.btn--ghost:hover{ background: rgba(255,255,255,.05); border-color:#d4af37; color:#d4af37; transform:translateY(-1px); }
+:root[data-theme="cream"] .btn--ghost:hover{ background: var(--c-surface-2); color:var(--brand-wine); border-color: var(--c-border-subtle); }
+
+.btn-action{
+  background: linear-gradient(180deg, #2A1625 0%, #241320 100%);
+  border:1px solid #5a2d4f; color:#fff;
+  box-shadow: 0 6px 18px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.04);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+}
+.btn-action:hover{
+  background: linear-gradient(180deg, #3b1b30 0%, #2A1625 100%);
+  border-color: var(--brand-gold);
+  box-shadow: 0 10px 26px rgba(0,0,0,.28), 0 0 0 1px rgba(212,175,55,.12) inset;
+  transform: translateY(-1px);
+}
+.btn-action:active{ transform: translateY(0); box-shadow: 0 4px 12px rgba(0,0,0,.22); }
+.btn-action:focus-visible{ outline:none; box-shadow: 0 0 0 2px var(--brand-gold), 0 0 6px 2px rgba(212,175,55,.4); }
+.btn-action--primary{
+  background: linear-gradient(180deg, color-mix(in srgb, var(--brand-wine) 90%, #000 10%) 0%, color-mix(in srgb, var(--brand-wine) 75%, #000 25%) 100%);
+  border-color: rgba(212,175,55,.55);
+  box-shadow: 0 12px 30px rgba(0,0,0,.32), 0 0 0 1px rgba(212,175,55,.14) inset;
+}
+.btn-action--primary:hover{ border-color:var(--brand-gold); box-shadow: 0 16px 36px rgba(0,0,0,.36), 0 0 0 1px rgba(212,175,55,.18) inset; }
+
+/* ---------------------------------------------------
+   7) Inputs / chips / pills
+   --------------------------------------------------- */
 .input{
-  width: 100%;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--hairline);
-  background: radial-gradient(120% 120% at 10% 0%, #161016, #0F0C0F);
-  color: var(--text);
-  outline: none;
+  width:100%; padding:12px 14px; border-radius:12px;
+  background: color-mix(in srgb, var(--c-bg) 85%, #fff 15%);
+  color:var(--c-ink); border:1px solid var(--c-border-subtle);
   transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
 }
-.input::placeholder{ color: #8d8790; }
-.input:focus{
-  border-color: var(--gold-2);
-  box-shadow: var(--focus-ring);
-  background: radial-gradient(120% 120% at 10% 0%, #1d161d, #0F0C0F);
+.input::placeholder{ color:var(--c-ink-muted); }
+.input:focus{ border-color: var(--brand-gold-600); box-shadow: var(--c-focus); }
+
+.chip,.pill{
+  padding:6px 10px; border-radius:999px; font-weight:600;
+  border:1px solid var(--c-border-subtle);
+  background: color-mix(in srgb, var(--c-bg) 80%, #fff 20%);
+  color:var(--c-ink);
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+.pill:hover{ transform:translateY(-1px); }
+.pill[aria-pressed="true"], .pill.active{ background:var(--brand-gold); color:#111; border-color: rgba(212,175,55,.65); }
+
+/* ---------------------------------------------------
+   8) Flat layers
+   --------------------------------------------------- */
+.ui-section{ background:var(--c-surface-1); color:var(--c-ink); border:1px solid var(--c-border-strong); border-radius:16px; box-shadow:var(--elev-1); }
+.ui-panel{   background:var(--c-surface-2); color:var(--c-ink); border:1px solid var(--c-border-subtle); border-radius:14px; box-shadow:var(--elev-1); }
+.ui-card{    background:var(--c-card);      color:#1B1A1A;     border:1px solid var(--c-border-strong); border-radius:12px; box-shadow:var(--elev-1); }
+
+:root[data-theme="charcoal"] .ui-panel,
+:root[data-theme="charcoal"] .ui-card{
+  background:#0f0f10;
+  border:1px solid var(--c-border-subtle);
+  box-shadow: 0 10px 24px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.03);
 }
 
-/* ====== Cards & pills ====== */
-.card{
-  background: linear-gradient(180deg, var(--surface), var(--surface-2));
-  border: 1px solid var(--hairline);
-  border-radius: 16px;
-  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
-  box-shadow: 0 8px 26px rgba(0,0,0,.25);
+/* Headings inside layers */
+.ui-section h1,.ui-section h2,.ui-section h3,
+.ui-panel   h1,.ui-panel   h2,.ui-panel   h3{ color:var(--c-head); }
+.ui-card h1,.ui-card h2,.ui-card h3{ color:var(--brand-wine); }
+
+/* Divider / title utility */
+.rule-gold{ height:1px; border:0; background:var(--rule-gold-grad); margin:8px 0; }
+.section-title{ display:flex; align-items:center; gap:14px; }
+.section-title .rule-gold{ flex:1; opacity:.7; }
+
+/* KPI plaques */
+.kpi{ background:#121314; border:1px solid var(--c-border-subtle); border-radius:12px; padding:12px 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
+.kpi .label{ font-variant:small-caps; letter-spacing:.5px; color:var(--c-gold); opacity:.9; }
+.kpi .value{ font-weight:700; color:var(--c-ink); }
+/* Cream KPIs use parchment */
+:root[data-theme="cream"] .kpi{ background:var(--c-surface-2); border-color:var(--c-border-subtle); box-shadow:var(--elev-1); }
+
+/* ---------------------------------------------------
+   9) Utilities
+   --------------------------------------------------- */
+.container{ max-width:1440px; margin:0 auto; }
+.elev-1{ box-shadow:var(--elev-1); }
+.elev-2{ box-shadow:var(--elev-2); }
+.text-muted{ color:var(--c-ink-muted); }
+
+/* Optional flat modifiers */
+.ui-section--flat,.ui-panel--flat{ background:var(--c-bg); border:1px solid var(--c-border-subtle); box-shadow:none; }
+.ui-card--flat{ background:var(--c-bg); color:var(--c-ink); border:1px solid var(--c-border-subtle); box-shadow:none; }
+
+/* ---------------------------------------------------
+   10) Compatibility aliases (scoped so themes don’t fight)
+   --------------------------------------------------- */
+.surface,.surface--elevated{ background:var(--c-surface-1); border:1px solid var(--c-border-strong); border-radius:16px; box-shadow:var(--elev-1); }
+
+:root[data-theme="charcoal"] .card-legacy,
+:root[data-theme="charcoal"] .card{
+  background:rgba(255,255,255,.03) !important;
+  color:var(--c-ink) !important;
+  border:1px solid var(--c-border-subtle) !important;
+  box-shadow: 0 10px 24px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.03) !important;
 }
-.card:hover{
-  transform: translateY(-2px);
-  box-shadow: 0 14px 32px rgba(0,0,0,.35);
-  border-color: rgba(212,175,55,.20);
+:root[data-theme="cream"] .card-legacy,
+:root[data-theme="cream"] .card{
+  background:var(--c-card);
+  color:#1B1A1A;
+  border:1px solid var(--c-border-strong);
+  border-radius:12px; box-shadow:var(--elev-1);
 }
 
-.pill{
-  transition: background-color .12s ease, color .12s ease, opacity .12s ease, border-color .12s ease, transform .12s ease;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid #333;
-  background: #1a1a1a;
-  color: #eee;
-  font-size: 12px;
-  font-weight: 600;
+/* —— Layout ornaments —— */
+.lane{ position:relative; padding-block:22px; }
+.lane + .lane{ margin-top:26px; }
+.lane::before,.lane::after{
+  content:""; position:absolute; left:12px; right:12px; height:1px;
+  background: linear-gradient(90deg, transparent, rgba(212,175,55,.25), transparent);
+  pointer-events:none;
 }
-.pill:hover{ transform: translateY(-1px); }
-.pill.active{
-  background: var(--gold);
-  color: #111;
-  border-color: rgba(212,175,55,.65);
+.lane::before{ top:0; opacity:.6; } .lane::after{ bottom:0; opacity:.35; }
+/* Cream: give lanes a parchment bed so they don’t look charcoal */
+:root[data-theme="cream"] .lane{ background:var(--c-surface-1); border:1px solid var(--c-border-subtle); }
+
+.group--halo{ position:relative; }
+.group--halo::before{
+  content:""; position:absolute; inset:-20px -8px;
+  background: radial-gradient(600px 220px at 50% -80px, rgba(212,175,55,.10), transparent 60%);
+  filter:saturate(120%); pointer-events:none;
+}
+.group--corners{ position:relative; }
+.group--corners::before,.group--corners::after{
+  content:""; position:absolute; width:14px; height:14px;
+  border-top:1px solid rgba(212,175,55,.45); border-left:1px solid rgba(212,175,55,.45); opacity:.75; pointer-events:none;
+}
+.group--corners::before{ top:-6px; left:-6px; }
+.group--corners::after{ bottom:-6px; right:-6px; transform:rotate(180deg); }
+
+.section-title{ display:flex; align-items:center; gap:14px; font-family:"Baskervville", serif; color:var(--c-head); }
+.section-title .rule{ height:1px; flex:1; background: linear-gradient(90deg, transparent, rgba(212,175,55,.55), transparent); opacity:.7; }
+
+:root[data-theme="charcoal"] .plate{
+  background:#0f0f10; border-radius:14px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 10px 24px rgba(0,0,0,.18);
+}
+:root[data-theme="cream"] .plate{ background:var(--c-surface-1); box-shadow:none; }
+
+.gutter-grid{ position:relative; display:grid; gap:16px; grid-template-columns:1.2fr .8fr; }
+.gutter-grid::after{
+  content:""; position:absolute; top:0; bottom:0; left: calc(100% * 1.2 / (1.2 + .8));
+  width:1px; transform: translateX(-8px);
+  background: linear-gradient(180deg, transparent, rgba(212,175,55,.18), transparent);
+  pointer-events:none;
 }
 
-/* ====== Skeleton shimmer ====== */
-@keyframes shimmer{ 0% { background-position: 0% 0; } 100% { background-position: 300% 0; } }
-.skeleton{
-  border-radius: 16px;
-  background: linear-gradient(90deg,#151515,#1a1a1a,#151515);
-  animation: shimmer 1.2s linear infinite;
-  background-size: 300% 100%;
+.tag{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:12px; color:var(--c-gold); border:1px solid rgba(212,175,55,.45); background:transparent; }
+.rule-dots{ height:1px; background: radial-gradient(circle, rgba(212,175,55,.55) 1px, transparent 1px); background-size:10px 1px; background-repeat:repeat-x; opacity:.7; }
+
+/* ===== Footer ===== */
+.site-footer{ margin-top:32px; background:var(--c-bg); color:var(--c-ink); }
+.site-footer .footer__rule{ height:1px; background:var(--rule-gold-grad); }
+.site-footer .footer__grid{ display:grid; gap:24px; padding:20px 16px 10px; grid-template-columns:1.2fr 1.2fr 1fr; }
+@media (max-width:980px){ .site-footer .footer__grid{ grid-template-columns:1fr; } }
+.footer__brand{ display:grid; gap:6px; align-content:start; }
+.footer__logo{ font-family:"Baskervville", serif; color:var(--brand-gold); font-size:18px; letter-spacing:.3px; }
+.footer__nav{ display:grid; grid-auto-flow:column; gap:32px; }
+.footer__nav ul{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.footer__nav a{ opacity:.92; } .footer__nav a:hover{ opacity:1; text-decoration:underline; text-underline-offset:3px; }
+.footer__nl{ display:grid; gap:8px; } .footer__nlRow{ display:grid; grid-template-columns:1fr auto; gap:10px; }
+.footer__meta{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px 24px; border-top:1px solid var(--c-border-subtle); opacity:.95; }
+.footer__links{ display:inline-flex; gap:10px; align-items:center; }
+.footer__links a{ opacity:.9; } .footer__links a:hover{ opacity:1; }
+
+/* Compact footer */
+.site-footer--compact .footer__grid{ grid-template-columns:1fr; }
+.site-footer--compact .footer__nav{ grid-auto-flow:row; gap:12px; }
+.site-footer--compact .footer__nl{ display:none; }
+
+/* Remove faint rail when desired */
+.ui-tabs--no-rail{ border-bottom:0; }
+
+/* Force pure charcoal plate (charcoal only) */
+:root[data-theme="charcoal"] .plate--charcoal{ background:#121212 !important; }
+
+/* Unbox section (charcoal-only flattening) */
+:root[data-theme="charcoal"] .unbox > .ui-card,
+:root[data-theme="charcoal"] .unbox > .card-legacy,
+:root[data-theme="charcoal"] .unbox > .card,
+:root[data-theme="charcoal"] .unbox > .surface,
+:root[data-theme="charcoal"] .unbox > .surface-2,
+:root[data-theme="charcoal"] .unbox > .ui-panel{
+  background:#121212 !important; border:0 !important; box-shadow:none !important;
 }
 
-/* Utilities */
-.container{ max-width: 1440px; margin: 0 auto; }
+/* ===== Result cards ===== */
+:root[data-theme="charcoal"] .result-card-gold{ background:#121212 !important; border-radius:12px; padding:16px; color:var(--brand-gold) !important; }
+:root[data-theme="charcoal"] .result-card-gold *{ color:var(--brand-gold) !important; fill:var(--brand-gold) !important; }
 
-/* ====== Modal (Quick View) ====== */
-.modalOverlay{
-  position: fixed; inset: 0; z-index: 60;
-  background: rgba(0,0,0,.55);
-  backdrop-filter: blur(4px);
-  animation: fadeIn .14s ease both;
+:root[data-theme="charcoal"] .result-card{
+  background:#121212 !important; color:rgba(249,249,249,.92) !important;
+  border:1px solid var(--c-border-subtle); border-radius:16px;
 }
-@keyframes fadeIn{ from{ opacity: 0 } to{ opacity: 1 } }
+:root[data-theme="charcoal"] .result-card *{ color:rgba(249,249,249,.92) !important; }
+:root[data-theme="charcoal"] .result-card .muted,
+:root[data-theme="charcoal"] .result-card .kpi-sub, :root[data-theme="charcoal"] .result-card small{ color:rgba(249,249,249,.7) !important; }
+:root[data-theme="charcoal"] .result-card h1, :root[data-theme="charcoal"] .result-card h2, :root[data-theme="charcoal"] .result-card h3{ color:rgba(249,249,249,.95) !important; }
+:root[data-theme="charcoal"] .result-card a.btn, :root[data-theme="charcoal"] .result-card a{ color:rgba(249,249,249,.92) !important; }
 
-.modal{
-  position: fixed; inset: 0; z-index: 70;
-  display: grid; place-items: center;
-  pointer-events: none;
+:root[data-theme="cream"] .result-card{
+  background:var(--c-card) !important; color:var(--c-ink) !important;
+  border:1px solid var(--c-border-strong); border-radius:16px;
 }
+:root[data-theme="cream"] .result-card *{ color:var(--c-ink) !important; }
+:root[data-theme="cream"] .result-card .muted,
+:root[data-theme="cream"] .result-card .kpi-sub, :root[data-theme="cream"] .result-card small{ color:var(--c-ink-muted) !important; }
+:root[data-theme="cream"] .result-card h1, :root[data-theme="cream"] .result-card h2, :root[data-theme="cream"] .result-card h3{ color:var(--c-head) !important; }
+:root[data-theme="cream"] .result-card a.btn, :root[data-theme="cream"] .result-card a{ color:var(--c-link) !important; }
+
+/* ===== Quiz catalog ===== */
+.quiz-catalog{ display:grid; gap:18px; }
+.quiz-cat__header{
+  width:100%; display:flex; align-items:center; justify-content:space-between;
+  padding:12px 14px; border-radius:12px;
+  background: color-mix(in srgb, var(--brand-wine2) 70%, #000 30%);
+  color:var(--c-ink); border:1px solid rgba(212,175,55,.35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  transition: background .15s ease, border-color .15s ease;
+}
+.quiz-cat__header:hover{ border-color: rgba(212,175,55,.6); }
+.quiz-cat__title{ font-family:"Baskervville", serif; font-size:18px; letter-spacing:.2px; color:var(--c-head); }
+.quiz-cat__chev{ width:28px; height:28px; display:grid; place-items:center; border-radius:8px; border:1px solid rgba(212,175,55,.35); color:var(--c-gold); }
+
+.quiz-grid{ display:grid; gap:14px; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); padding:10px 4px 2px; }
+.quiz-card{
+  position:relative; border-radius:14px;
+  background: linear-gradient(180deg, #301727 0%, #121212 100%); /* wine → charcoal */
+  color:var(--c-ink); border:1px solid rgba(212,175,55,.22);
+  box-shadow: 0 10px 24px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.03);
+  padding:14px; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+/* .quiz-card:hover{ transform: translateY(-2px); border-color: rgba(212,175,55,.45); box-shadow: 0 14px 30px rgba(0,0,0,.24), 0 0 0 1px rgba(212,175,55,.10) inset; } */
+
+:root[data-theme="cream"] .quiz-cat__header{
+  background: var(--c-surface-1); color:var(--c-head);
+  border-color: var(--c-border-strong); box-shadow:none;
+}
+:root[data-theme="cream"] .quiz-card{
+  background: linear-gradient(180deg, var(--c-surface-2) 0%, var(--c-surface-1) 100%);
+  color:var(--c-ink); border-color: rgba(212,175,55,.22);
+}
+:root[data-theme="cream"] .quiz-card .btn,
+:root[data-theme="cream"] .quiz-card .btn-small,
+:root[data-theme="cream"] .quiz-card .cta{
+  background:var(--brand-wine); color:#F7F4ED;
+  border-color: color-mix(in srgb, var(--brand-wine) 70%, #000 30%); box-shadow:var(--elev-1);
+}
+
+/* ===== Dossier defaults ===== */
+.dossier-render article.dossier{ display:grid; gap:12px; line-height:1.7; }
+.dossier-render article.dossier > section{
+  background: var(--c-surface-1, #121212);
+  border:1px solid var(--c-border-subtle, rgba(255,255,255,.08));
+  border-radius:14px; padding:12px 14px;
+}
+.dossier-render h3{ margin:0 0 6px; color:var(--brand-gold,#D4AF37); font-weight:700; font-size:16px; }
+.dossier-render p{ margin:6px 0; }
+.insight-source{ font-style:italic; }
+
+/* ===== Modals / QV ===== */
+.modalOverlay{ position:fixed; inset:0; background:rgba(0,0,0,.5); backdrop-filter:blur(2px); z-index:1000; }
+.modal{ position:fixed; inset:0; display:grid; place-items:center; padding:24px; z-index:1001; }
 .modalInner{
-  pointer-events: auto;
-  width: min(980px, 92vw);
-  max-height: min(84vh, 820px);
-  display: grid;
-  grid-template-rows: auto 1fr;
-  border-radius: 18px;
-  overflow: hidden;
-  box-shadow: 0 30px 80px rgba(0,0,0,.5);
-  border: 1px solid rgba(255,255,255,.10);
-  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)), var(--surface);
+  width:min(960px,96vw); max-height:90vh; overflow:auto; border-radius:16px;
+  border:1px solid var(--c-border-subtle, rgba(255,255,255,.12));
+  background: color-mix(in srgb, var(--brand-wine2,#241320) 80%, #000 20%);
+  box-shadow: 0 18px 42px rgba(0,0,0,.42);
 }
-.modalHeader{
-  display: flex; align-items: center; gap: 16px; justify-content: space-between;
-  padding: 14px 18px;
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)), rgba(27,20,28,.65);
-  backdrop-filter: blur(10px);
+:root[data-theme="cream"] .modalInner{ background:var(--c-card); border-color:var(--c-border-subtle); box-shadow:var(--elev-3); }
+.glassy-header,.glass-header{ position:sticky; top:0; backdrop-filter:saturate(120%) blur(6px); background: color-mix(in srgb, rgba(0,0,0,.55) 70%, transparent); border-bottom:1px solid rgba(255,255,255,.06); padding:12px 16px; display:flex; align-items:center; justify-content:space-between; }
+.modalBody{ display:grid; gap:16px; grid-template-columns:min(420px,40%) 1fr; padding:16px; }
+@media (max-width:900px){ .modalBody{ grid-template-columns:1fr; } }
+.qv-hero{ aspect-ratio:1/1; border-radius:12px; overflow:hidden; background:#0a0a0a; }
+:root[data-theme="cream"] .qv-hero{ background:var(--c-surface-2); }
+.qv-thumbs{ margin-top:8px; display:grid; grid-auto-flow:column; gap:8px; overflow-x:auto; }
+.qv-thumb{ width:64px; height:64px; border-radius:8px; border:1px solid var(--c-border-subtle); overflow:hidden; }
+.qv-thumb.active{ outline:2px solid var(--brand-gold); }
+
+/* ===== KPI label cleanup ===== */
+.kpi.label, .kpi.label::before, .kpi.label::after{ border:none !important; background:transparent !important; box-shadow:none !important; border-radius:0 !important; padding:0 !important; }
+
+/* ===== Links (Cream defaults) ===== */
+:root[data-theme="cream"] a.link,
+:root[data-theme="cream"] .prose a,
+:root[data-theme="cream"] .link{ color:var(--c-link); text-decoration-thickness:1px; text-underline-offset:3px; }
+:root[data-theme="cream"] a.link:hover,
+:root[data-theme="cream"] .prose a:hover,
+:root[data-theme="cream"] .link:hover{ color:var(--c-link-hover); text-decoration:underline; }
+
+/* ===== Progress / Pills (tokenized) ===== */
+.progress{ background: rgba(255,255,255,.08); }               /* charcoal */
+:root[data-theme="cream"] .progress{ background: var(--c-border-subtle); }
+.progress__fill{ background: var(--c-gold); }
+
+.pill{ background:transparent; color:var(--c-ink); border:1px solid var(--c-border-subtle); }
+.pill[aria-selected="true"]{ background:var(--c-gold); color:#121212; border-color:rgba(212,175,55,.55); }
+
+/* ===== Result / Quiz wrappers that sometimes ship with external skins ===== */
+.quiz-tile,.quiz-radar-card-outer{ background:transparent !important; border:0 !important; box-shadow:none !important; }
+.ui-card:has(.quiz-radar-card), .card-legacy:has(.quiz-radar-card), .card:has(.quiz-radar-card){
+  background:transparent !important; border:0 !important; box-shadow:none !important; padding:0 !important;
+}
+.quiz-grid:has(.quiz-radar-card){ background:transparent !important; border:0 !important; box-shadow:none !important; }
+
+/* ===== Optional rails that looked charcoal in Cream ===== */
+:root[data-theme="cream"] .hero,
+:root[data-theme="cream"] .hero-wrap,
+:root[data-theme="cream"] .hero-rail,
+:root[data-theme="cream"] .section-hero{ background:var(--c-surface-1); border:1px solid var(--c-border-subtle); color:var(--c-ink); }
+
+/* ===== Safety text guards for Cream (no white copy on parchment) ===== */
+:root[data-theme="cream"] .text-white,
+:root[data-theme="cream"] .text-offwhite,
+:root[data-theme="cream"] .text-light,
+:root[data-theme="cream"] .prose :where(p,li,small,span)[style*="color:#fff"],
+:root[data-theme="cream"] [style*="color: rgb(255, 255, 255)"],
+:root[data-theme="cream"] [style*="color:#ffffff"]{ color:var(--c-ink) !important; }
+:root[data-theme="cream"] .ui-section :where(p,li,small),
+:root[data-theme="cream"] .ui-panel   :where(p,li,small),
+:root[data-theme="cream"] .ui-card    :where(p,li,small){ color:var(--c-ink) !important; }
+:root[data-theme="cream"] h1, :root[data-theme="cream"] h2, :root[data-theme="cream"] h3{ color:var(--c-head) !important; }
+
+/* ==============================
+   CREAM – Products page hardeners
+   (collections rail + product titles)
+   ============================== */
+
+/* 1) Collection buttons in the left rail (they're inline-styled buttons) */
+:root[data-theme="cream"] aside .surface button,
+:root[data-theme="cream"] .collections .surface button {
+  /* neutral tile */
+  background: var(--c-surface-2) !important;
+  color: var(--c-ink) !important;
+  border: 1px solid var(--c-border-subtle) !important;
+  box-shadow: var(--elev-1);
+  text-shadow: none !important;
+}
+
+/* hover/focus */
+:root[data-theme="cream"] aside .surface button:hover,
+:root[data-theme="cream"] .collections .surface button:hover {
+  background: var(--c-surface-1) !important;
+  border-color: var(--c-border-strong) !important;
+}
+
+/* selected/pressed state */
+:root[data-theme="cream"] aside .surface button[aria-pressed="true"],
+:root[data-theme="cream"] .collections .surface button[aria-pressed="true"],
+:root[data-theme="cream"] aside .surface button.is-active,
+:root[data-theme="cream"] .collections .surface button.is-active {
+  background: var(--brand-gold) !important;
+  color: var(--brand-wine) !important;
+  border-color: rgba(212,175,55,.55) !important;
+}
+
+/* 2) Product card title links (override inline white) */
+:root[data-theme="cream"] .card a[href*="/product/"],
+:root[data-theme="cream"] .products .card a,
+:root[data-theme="cream"] .product-grid .card a {
+  color: var(--c-ink) !important;         /* espresso */
+  text-decoration: none;
+}
+
+/* title hover for affordance */
+:root[data-theme="cream"] .card a[href*="/product/"]:hover,
+:root[data-theme="cream"] .products .card a:hover,
+:root[data-theme="cream"] .product-grid .card a:hover {
+  color: var(--c-link-hover) !important;   /* richer plum */
+  text-decoration: underline;
+}
+
+/* (optional) dim the price line below titles if needed */
+:root[data-theme="cream"] .card .price,
+:root[data-theme="cream"] .card .woocommerce-Price-amount {
+  color: var(--c-ink-muted) !important;
+}
+
+
+
+/* ==============================
+   CREAM – product card caption strip (bottom panel)
+   ============================== */
+:root[data-theme="cream"] .card [style*="padding: 14px"],
+:root[data-theme="cream"] .card [style*="padding:14px"] {
+  /* This is the name/price/button panel at the bottom */
+  background: var(--c-card) !important;        /* parchment */
+  color: var(--c-ink) !important;              /* espresso text */
+  border-top: 1px solid var(--c-border-subtle) !important;
+}
+
+/* Title link inside the caption (beats inline white + visited) */
+:root[data-theme="cream"] .card [style*="padding: 14px"] a,
+:root[data-theme="cream"] .card [style*="padding:14px"] a {
+  color: var(--c-ink) !important;
+  text-decoration: none;
+}
+:root[data-theme="cream"] .card [style*="padding: 14px"] a:hover,
+:root[data-theme="cream"] .card [style*="padding:14px"] a:hover {
+  color: var(--c-link-hover) !important;       /* plum hover */
+  text-decoration: underline;
+}
+
+/* Price/meta text that’s coming through dim/white */
+:root[data-theme="cream"] .card [style*="padding: 14px"] :is(p, small, span, div)[style*="color"],
+:root[data-theme="cream"] .card [style*="padding:14px"] :is(p, small, span, div)[style*="color"] {
+  color: var(--c-ink) !important;              /* readable on cream */
+}
+
+/* Optional: if the price line should be softer than the title */
+:root[data-theme="cream"] .card [style*="padding: 14px"] .price,
+:root[data-theme="cream"] .card [style*="padding:14px"] .price {
+  color: var(--c-ink-muted) !important;
+}
+
+
+/* ================================
+   ACCOUNT DASHBOARD — CREAM PATCH
+   (drop near end of globals.css)
+   ================================ */
+
+/* 0) Make sure the page canvas is cream */
+:root[data-theme="cream"] body,
+:root[data-theme="cream"] #root,
+:root[data-theme="cream"] main,
+:root[data-theme="cream"] .account-dashboard,
+:root[data-theme="cream"] [data-page="account"],
+:root[data-theme="cream"] .dashboard,
+:root[data-theme="cream"] .account-home {
+  background: var(--c-bg) !important;
+  color: var(--c-ink) !important;
+}
+
+/* 1) Hero / large top section (your highlighted element:
+      section.plate.group--halo.group--corners) */
+:root[data-theme="cream"] .plate,
+:root[data-theme="cream"] .group--halo,
+:root[data-theme="cream"] .group--corners,
+:root[data-theme="cream"] .hero,
+:root[data-theme="cream"] .hero-rail,
+:root[data-theme="cream"] .section-hero {
+  background: var(--c-surface-1) !important;
+  border: 1px solid var(--c-border-subtle) !important;
+  box-shadow: none !important;
+}
+
+/* Headings & body copy inside the hero should read like cream */
+:root[data-theme="cream"] .hero h1,
+:root[data-theme="cream"] .plate h1,
+:root[data-theme="cream"] .hero h2,
+:root[data-theme="cream"] .plate h2,
+:root[data-theme="cream"] .hero h3,
+:root[data-theme="cream"] .plate h3 {
+  color: var(--c-head) !important;
+}
+:root[data-theme="cream"] .hero p,
+:root[data-theme="cream"] .plate p,
+:root[data-theme="cream"] .hero small,
+:root[data-theme="cream"] .plate small {
+  color: var(--c-ink) !important;
+}
+
+/* 2) Rows/rails/gutters below the hero */
+:root[data-theme="cream"] .lane,
+:root[data-theme="cream"] .row,
+:root[data-theme="cream"] .rail,
+:root[data-theme="cream"] .gutter,
+:root[data-theme="cream"] .gutter-grid,
+:root[data-theme="cream"] .section-rail {
+  background: var(--c-surface-1) !important;
+  border: 1px solid var(--c-border-subtle) !important;
+  color: var(--c-ink) !important;
+}
+:root[data-theme="cream"] .lane::before,
+:root[data-theme="cream"] .lane::after {
+  background: linear-gradient(90deg, transparent, rgba(212,175,55,.25), transparent) !important;
+}
+
+/* 3) Breathe widget (make it parchment + readable) */
+:root[data-theme="cream"] .breathe,
+:root[data-theme="cream"] .breathe-card,
+:root[data-theme="cream"] .breathe-widget,
+:root[data-theme="cream"] [class*="breathe"] {
+  background: var(--c-card) !important;
+  color: var(--c-ink) !important;
+  border: 1px solid var(--c-border-strong) !important;
+  box-shadow: var(--elev-1);
+}
+
+/* Dial/ring readability on cream */
+:root[data-theme="cream"] .breathe .ring,
+:root[data-theme="cream"] .breathe .dial,
+:root[data-theme="cream"] [class*="breathe"] .ring,
+:root[data-theme="cream"] [class*="breathe"] .dial {
+  border-color: color-mix(in srgb, var(--c-ink) 24%, transparent) !important;
+}
+
+/* 4) Any “forced white” text that sneaks in */
+:root[data-theme="cream"] .hero .text-white,
+:root[data-theme="cream"] .plate .text-white,
+:root[data-theme="cream"] [data-page="account"] [style*="color:#fff"],
+:root[data-theme="cream"] [data-page="account"] [style*="rgb(255, 255, 255)"] {
+  color: var(--c-ink) !important;
+}
+
+
+/* ===========================
+   Account dashboard dark div
+   =========================== */
+
+/* 1) Most robust: kill any inline charcoal background on the wrapper */
+:root[data-theme="cream"] body > div[style*="background: rgb(17"],
+:root[data-theme="cream"] body > div[style*="background:rgb(17"],
+:root[data-theme="cream"] body > div[style*="background:#111"] {
+  background: var(--c-bg) !important;
+  color: var(--c-ink) !important;
+}
+
+/* 2) Also catch the common structure: the wrapper right after the tab row */
+/* NEW: Let the container after a tabsbar stay transparent so it inherits the section parchment */
+:root[data-theme="cream"] .tabsbar + div {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+
+/* ==== CREAM: kill any hard-coded charcoal canvas wrappers ==== */
+:root[data-theme="cream"] html,
+:root[data-theme="cream"] body,
+:root[data-theme="cream"] #root {
+  background: var(--c-bg) !important;
+  color: var(--c-ink);
+}
+
+/* The problematic wrapper(s) sitting directly under #root with inline min-height */
+:root[data-theme="cream"] body #root > div[style*="min-height"][style*="100vh"] {
+  background: var(--c-bg) !important;
+  color: var(--c-ink) !important;
+}
+
+/* Safety net: any element whose inline style literally sets charcoal bg */
+:root[data-theme="cream"] body *[style*="background: rgb(17, 17, 17"] {
+  background: var(--c-bg) !important;
+  color: var(--c-ink) !important;
+}
+/* CREAM — Breathe widget should look like other containers */
+:root[data-theme="cream"] section.breath,
+:root[data-theme="cream"] .breath {
+  background: var(--c-surface-1) !important; /* not pure bg (too bright) */
+  color: var(--c-ink) !important;
+  border: 1px solid var(--c-border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--elev-1);
+}
+
+/* Inner shells some implementations use (keeps everything off-white, not white) */
+:root[data-theme="cream"] .breath .inner,
+:root[data-theme="cream"] .breath .stage,
+:root[data-theme="cream"] .breath .panel {
+  background: var(--c-surface-1) !important;
+}
+
+/* Title/heading */
+:root[data-theme="cream"] .breath h1,
+:root[data-theme="cream"] .breath h2,
+:root[data-theme="cream"] .breath .title {
+  color: var(--c-head) !important; /* plum header */
+}
+
+/* Gauge/ring + neutral UI chrome */
+:root[data-theme="cream"] .breath .ring,
+:root[data-theme="cream"] .breath .ring * {
+  border-color: var(--c-border-subtle) !important;
+  color: var(--c-ink) !important;
+}
+
+/* Pills/toggles in the header (Box / 4-7-8 / Sound) */
+:root[data-theme="cream"] .breath .pill,
+:root[data-theme="cream"] .breath .chip {
+  background: var(--c-surface-2) !important;
+  color: var(--c-ink) !important;
+  border-color: var(--c-border-subtle) !important;
+}
+
+/* ===============================
+   CREAM – Personality / Calendar
+   =============================== */
+
+/* 1) Left column container should match the right (Personalized Analysis) */
+:root[data-theme="cream"] .plate--charcoal {
+  /* some pages still add this class; force to cream */
+  background: var(--c-surface-1) !important;
+  border: 1px solid var(--c-border-subtle) !important;
+  color: var(--c-ink) !important;
+  box-shadow: var(--elev-1) !important;
+}
+
+/* Tabs row inside that left column — keep it parchment, not page-bg */
+:root[data-theme="cream"] .plate--charcoal .ui-tabs,
+:root[data-theme="cream"] .plate--charcoal .tabsbar {
+  background: var(--c-surface-1) !important;
+  border-bottom: 1px solid var(--c-border-subtle) !important;
+}
+
+/* 2) Calendar tiles — neutralize charcoal inline styles and switch to cream */
+/* unselected day tiles */
+:root[data-theme="cream"] .plate--charcoal .unbox div[title] {
+  background: var(--c-surface-2) !important;              /* subtle contrast to container */
+  border: 1px solid var(--c-border-strong) !important;    /* tidy outline */
+  color: var(--c-ink) !important;
+  box-shadow: none !important;
+}
+
+/* today / selected / hover states (if those cells use a different inline color) */
+:root[data-theme="cream"] .plate--charcoal .unbox div[title]:hover {
+  background: color-mix(in srgb, var(--c-surface-2) 80%, var(--c-gold) 20%) !important;
+  border-color: rgba(212,175,55,.55) !important;
+}
+
+/* If you have a "current day" or "active" class on a tile, make it pop gently */
+:root[data-theme="cream"] .plate--charcoal .unbox div[title].active,
+:root[data-theme="cream"] .plate--charcoal .unbox div[title][data-active="true"] {
+  background: color-mix(in srgb, var(--c-surface-2) 65%, var(--c-gold) 35%) !important;
+  border-color: rgba(212,175,55,.65) !important;
+  color: var(--brand-wine) !important;
+}
+
+/* Calendar cells on cream: one step deeper than the container */
+:root[data-theme="cream"] {
+  --cal-cell-bg: color-mix(in srgb, var(--c-card) 88%, #000 12%);
+  --cal-cell-border: var(--c-border-strong);
+}
+
+/* Common day tiles (title-based, gridcell-based, etc.) */
+:root[data-theme="cream"] .checkin-calendar [title],
+:root[data-theme="cream"] [data-widget="calendar"] [title],
+:root[data-theme="cream"] .checkin-calendar [role="gridcell"],
+:root[data-theme="cream"] [class*="calendar"] [role="gridcell"] {
+  background: var(--cal-cell-bg) !important;
+  border: 1px solid var(--cal-cell-border) !important;
+  color: var(--c-ink) !important;
+  box-shadow: none !important;
+}
+
+/* Optional: hover/selected polish (keeps brand feel) */
+:root[data-theme="cream"] .checkin-calendar [role="gridcell"]:hover {
+  outline: 1px solid rgba(212,175,55,.45);
+}
+:root[data-theme="cream"] .checkin-calendar [aria-selected="true"],
+:root[data-theme="cream"] .checkin-calendar .is-today {
+  outline: 1px solid rgba(212,175,55,.55);
+  box-shadow: 0 0 0 2px rgba(212,175,55,.15) inset;
+}
+
+
+/* CHART BOX — use cream parchment instead of wine gradient */
+:root[data-theme="cream"] div[style*="linear-gradient"][style*="rgb(18, 18, 18)"],
+:root[data-theme="cream"] div[style*="linear-gradient"][style*="rgb(48, 23, 39)"] {
+  background: var(--c-card) !important;                /* #DFD7CE default */
+  border: 1px solid var(--c-border-strong) !important; /* keeps the soft frame */
+  box-shadow: var(--elev-1) !important;
+  color: var(--c-ink) !important;
+}
+
+/* Cream chart tokens */
+:root[data-theme="cream"] {
+  --chart-accent: #6B4A64;              /* muted plum line */
+  --chart-accent-weak: #B690A6;         /* lighter plum (bars/areas/hover) */
+  --chart-grid: color-mix(in srgb, var(--c-ink) 12%, transparent);
+  --chart-axis: color-mix(in srgb, var(--c-ink) 65%, transparent);
+}
+
+/* Axes & grid */
+:root[data-theme="cream"] .recharts-cartesian-grid line { stroke: var(--chart-grid) !important; }
+:root[data-theme="cream"] .recharts-cartesian-axis line { stroke: var(--chart-axis) !important; }
+:root[data-theme="cream"] .recharts-cartesian-axis tick text,
+:root[data-theme="cream"] .recharts-text {
+  fill: var(--c-ink) !important;
+}
+
+/* Line charts */
+:root[data-theme="cream"] .recharts-line .recharts-curve,
+:root[data-theme="cream"] .recharts-line-curve {
+  stroke: var(--chart-accent) !important;
+  stroke-width: 2.25px !important;
+}
+:root[data-theme="cream"] .recharts-line .recharts-dot,
+:root[data-theme="cream"] .recharts-dot {
+  fill: var(--chart-accent) !important;
+  stroke: var(--chart-accent) !important;
+}
+
+/* Area charts */
+:root[data-theme="cream"] .recharts-area-curve { stroke: var(--chart-accent) !important; }
+:root[data-theme="cream"] .recharts-area-area  { fill: var(--chart-accent) !important; fill-opacity: .18 !important; }
+
+/* Bar charts */
+:root[data-theme="cream"] .recharts-bar-rectangle path {
+  fill: var(--chart-accent-weak) !important;
+}
+
+/* Legend & tooltip */
+:root[data-theme="cream"] .recharts-legend-item-text { color: var(--c-ink) !important; }
+:root[data-theme="cream"] .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--c-card) !important;
+  border: 1px solid var(--c-border-subtle) !important;
+  color: var(--c-ink) !important;
+  box-shadow: var(--elev-2) !important;
+}
+/* ===========================
+   CREAM — Radar charts polish
+   (Recharts radar / polar grid)
+   =========================== */
+
+/* Palette for Cream charts */
+:root[data-theme="cream"] {
+  --chart-accent: #6B4A64;              /* primary line (muted plum) */
+  --chart-accent-weak: #B690A6;         /* fill / secondary plum */
+  --chart-grid: color-mix(in srgb, var(--c-ink) 12%, transparent);  /* grid lines */
+  --chart-axis: color-mix(in srgb, var(--c-ink) 65%, transparent);  /* axis hairlines */
+}
+
+/* Grid (rings + spokes) */
+:root[data-theme="cream"] .recharts-polar-grid line,
+:root[data-theme="cream"] .recharts-polar-grid path {
+  stroke: var(--chart-grid) !important;
+}
+
+/* Axis ticks & labels */
+:root[data-theme="cream"] .recharts-polar-angle-axis line,
+:root[data-theme="cream"] .recharts-polar-radius-axis line {
+  stroke: var(--chart-axis) !important;
+}
+:root[data-theme="cream"] .recharts-polar-angle-axis text,
+:root[data-theme="cream"] .recharts-polar-radius-axis text,
+:root[data-theme="cream"] .recharts-text {
+  fill: var(--c-ink) !important;        /* no more white labels */
+  opacity: .92;
+}
+
+/* Radar shape (polygon) — stroke & fill */
+:root[data-theme="cream"] .recharts-radar-polygon,
+:root[data-theme="cream"] .recharts-polygon {
+  stroke: var(--chart-accent) !important;     /* replaces gold outline */
+  stroke-width: 2.25px !important;
+  fill: var(--chart-accent-weak) !important;  /* replaces gray fill */
+  fill-opacity: .22 !important;               /* subtle translucency on parchment */
+}
+
+/* If dots are rendered at vertices */
+:root[data-theme="cream"] .recharts-dot,
+:root[data-theme="cream"] .recharts-radar-dot {
+  fill: var(--chart-accent) !important;
+  stroke: var(--chart-accent) !important;
+}
+
+/* Legend & tooltip in radar contexts */
+:root[data-theme="cream"] .recharts-legend-item-text { color: var(--c-ink) !important; }
+:root[data-theme="cream"] .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--c-card) !important;
+  border: 1px solid var(--c-border-subtle) !important;
+  color: var(--c-ink) !important;
+  box-shadow: var(--elev-2) !important;
+}
+
+
+/* ================================
+   Cream — Achievements: fix light tiles
+   (Tier / Daily Streak use inline rgba whites)
+   ================================ */
+
+/* 1) Normalize the card itself (overrides inline bg/border) */
+:root[data-theme="cream"] [data-page="achievements"] .card[style],
+:root[data-theme="cream"] .page--achievements .card[style],
+:root[data-theme="cream"] .card[style*="rgba(255, 255, 255"] {
+  background: var(--c-surface-2) !important;          /* same parchment as other tiles */
+  border: 1px solid var(--c-border-subtle) !important;
+  color: var(--c-ink) !important;
+  box-shadow: var(--elev-1) !important;
+}
+
+/* 2) The tiny progress rail block inside those cards also had inline rgba(255...) */
+:root[data-theme="cream"] [data-page="achievements"] .card > div[style*="height: 10px"],
+:root[data-theme="cream"] .page--achievements .card > div[style*="height: 10px"],
+:root[data-theme="cream"] .card > div[style*="height: 10px"][style*="rgba(255, 255, 255"] {
+  background: var(--c-surface-1) !important;          /* subtle parchment for the rail track */
+  border: 1px solid var(--c-border-subtle) !important;
+}
+
+/* 3) If those stat tiles sit inside a “glass/surface” wrapper, keep that parchment too */
+:root[data-theme="cream"] [data-page="achievements"] .surface.glass,
+:root[data-theme="cream"] .page--achievements .surface.glass {
+  background: var(--c-surface-1) !important;
+  border-color: var(--c-border-subtle) !important;
+}
+
+/* =========================================
+   CREAM THEME — Lighter Plum Buttons (#301727)
+   Scope: make ghost/light buttons plum; keep .btn--gold for rare/special CTAs only
+   ========================================= */
+
+:root[data-theme="cream"] {
+  --btn-plum-bg: #301727;                       /* lighter brand plum */
+  --btn-plum-ink: #F7F4ED;                      /* cream ink on plum */
+  --btn-plum-border: color-mix(in srgb, #301727 72%, #000 28%);
+  --btn-plum-hover: #241320;                    /* slight deepen on hover */
+  --btn-plum-focus-ring: 0 0 0 2px #F7F4ED, 0 0 0 4px rgba(48, 23, 39, .35);
+}
+
+/* 1) Convert light/ghost buttons to plum (but NOT gold) */
+:root[data-theme="cream"]
+  button:not(.btn--gold):not([class*="gold"]),
+:root[data-theme="cream"]
+  .button:not(.btn--gold):not([class*="gold"]),
+:root[data-theme="cream"]
+  a.button:not(.btn--gold):not([class*="gold"]),
+:root[data-theme="cream"]
+  .wp-element-button:not(.btn--gold):not([class*="gold"]),
+:root[data-theme="cream"]
+  .btn:not(.btn--gold):not(.btn-action--primary),
+/* specific bits from screenshots */
+:root[data-theme="cream"] .quick-view,
+:root[data-theme="cream"] .quickview-button,
+:root[data-theme="cream"] .save-btn,
+:root[data-theme="cream"] .qv-actions .btn,
+:root[data-theme="cream"] .calendar .nav button,
+:root[data-theme="cream"] .react-calendar__navigation button,
+:root[data-theme="cream"] .hero button,
+:root[data-theme="cream"] .hero .btn {
+  background: var(--btn-plum-bg) !important;
+  color: var(--btn-plum-ink) !important;
+  border-color: var(--btn-plum-border) !important;
+  box-shadow: var(--elev-1);
+}
+
+/* 2) Hover / active */
+:root[data-theme="cream"]
+  button:not(.btn--gold):not([class*="gold"]):hover,
+:root[data-theme="cream"] .button:not(.btn--gold):not([class*="gold"]):hover,
+:root[data-theme="cream"] a.button:not(.btn--gold):not([class*="gold"]):hover,
+:root[data-theme="cream"] .wp-element-button:not(.btn--gold):not([class*="gold"]):hover,
+:root[data-theme="cream"] .btn:not(.btn--gold):not(.btn-action--primary):hover,
+:root[data-theme="cream"] .quick-view:hover,
+:root[data-theme="cream"] .quickview-button:hover,
+:root[data-theme="cream"] .save-btn:hover,
+:root[data-theme="cream"] .qv-actions .btn:hover,
+:root[data-theme="cream"] .calendar .nav button:hover,
+:root[data-theme="cream"] .react-calendar__navigation button:hover {
+  background: var(--btn-plum-hover) !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="cream"]
+  button:not(.btn--gold):not([class*="gold"]):active,
+:root[data-theme="cream"] .button:not(.btn--gold):not([class*="gold"]):active,
+:root[data-theme="cream"] a.button:not(.btn--gold):not([class*="gold"]):active,
+:root[data-theme="cream"] .wp-element-button:not(.btn--gold):not([class*="gold"]):active,
+:root[data-theme="cream"] .btn:not(.btn--gold):not(.btn-action--primary):active,
+:root[data-theme="cream"] .quick-view:active,
+:root[data-theme="cream"] .quickview-button:active,
+:root[data-theme="cream"] .save-btn:active,
+:root[data-theme="cream"] .qv-actions .btn:active,
+:root[data-theme="cream"] .calendar .nav button:active,
+:root[data-theme="cream"] .react-calendar__navigation button:active {
+  transform: translateY(0);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,.18);
+}
+
+/* 3) Focus ring for accessibility */
+:root[data-theme="cream"]
+  button:not(.btn--gold):not([class*="gold"]):focus-visible,
+:root[data-theme="cream"] .button:not(.btn--gold):not([class*="gold"]):focus-visible,
+:root[data-theme="cream"] a.button:not(.btn--gold):not([class*="gold"]):focus-visible,
+:root[data-theme="cream"] .wp-element-button:not(.btn--gold):not([class*="gold"]):focus-visible,
+:root[data-theme="cream"] .btn:not(.btn--gold):not(.btn-action--primary):focus-visible,
+:root[data-theme="cream"] .quick-view:focus-visible,
+:root[data-theme="cream"] .quickview-button:focus-visible,
+:root[data-theme="cream"] .save-btn:focus-visible,
+:root[data-theme="cream"] .qv-actions .btn:focus-visible,
+:root[data-theme="cream"] .calendar .nav button:focus-visible,
+:root[data-theme="cream"] .react-calendar__navigation button:focus-visible {
+  outline: none;
+  box-shadow: var(--btn-plum-focus-ring) !important;
+}
+
+/* 4) Optional outline variant (if you have any ghost/outline classes) */
+:root[data-theme="cream"] .btn--outline,
+:root[data-theme="cream"] .button--outline {
+  background: transparent !important;
+  color: var(--btn-plum-bg) !important;
+  border-color: var(--btn-plum-border) !important;
+}
+:root[data-theme="cream"] .btn--outline:hover,
+:root[data-theme="cream"] .button--outline:hover {
+  background: color-mix(in srgb, var(--btn-plum-bg) 8%, transparent) !important;
+}
+
+/* 5) Gold remains for special CTAs only (no changes here) */
+
+/* ================================
+   Topnav — Plum rail (#301727)
+   (replaces prior cream/charcoal nav rules)
+   ================================ */
+:root { --nav-plum: #301727; }
+
+.topnav {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--nav-plum) !important;
+  color: #F7F4ED !important;                     /* light ink on plum */
+  backdrop-filter: saturate(120%) blur(6px);
+  border-bottom: 1px solid color-mix(in srgb, var(--nav-plum) 72%, #000 28%) !important;
+  box-shadow: var(--e2), inset 0 -1px 0 rgba(255,255,255,.04) !important;
+}
+.topnav::after {                                  /* keep luxe gold hairline */
+  content:""; display:block; height:1px; background: var(--rule-gold-grad);
+}
+.topnav__links a,
+.topnav__brand a,
+.topnav__actions a,
+.topnav button,
+.topnav .chip,
+.topnav .btn,
+.topnav .btn-outline-gold {
+  color: #F7F4ED !important;
+}
+
+/* Chips / outline buttons on plum */
+.topnav .chip,
+.topnav .btn-outline-gold {
+  border-radius: 12px; padding: 6px 10px;
+  background: transparent;
+  border: 1px solid rgba(212,175,55,.45);
+}
+.topnav .chip:hover,
+.topnav .btn-outline-gold:hover {
+  background: rgba(255,255,255,.06);
+}
+
+/* Subtle hover for nav links */
+.topnav__links a:hover { opacity: 1; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Optional: make the little theme “Cream” chip readable on plum too */
+:root[data-theme="cream"] .topnav .chip { color: #F7F4ED !important; }
+
+
+
+/* ===================================================================
+   AFRODEZEA — Theme 3: "velvet" (Dark Cream, Luxury Serenity)
+   Toggle with: <html data-theme="velvet">
+   =================================================================== */
+
+:root[data-theme="velvet"] {
+  /* Neutrals / text */
+  --c-bg:            #121212;   /* base canvas */
+  --c-ink:           #F7F4ED;   /* primary text (warm cream) */
+  --c-ink-muted:     #C9C5BD;   /* secondary copy */
+  --c-head:          #F7F4ED;   /* headings */
+
+  /* Surfaces (depth ↑ as number ↑) */
+  --c-surface-1:     #1E1E1E;   /* L1 sections */
+  --c-surface-2:     #2C2C2C;   /* L2 panels  */
+  --c-card:          #3C3C3C;   /* L3 cards   */
+
+  /* Lines / borders */
+  --c-border-subtle: #595959;
+  --c-border-strong: #6A6A6A;
+
+  /* Brand & accents */
+  --brand-wine:      #301727;   /* primary brand */
+  --brand-wine-600:  #47263A;   /* hover */
+  --brand-wine-700:  #1D0D18;   /* active */
+  --brand-gold:      #D4AF37;   /* secondary accent */
+  --brand-gold-600:  #C29E2D;   /* hover */
+  --brand-gold-300:  #EBD27C;   /* highlight */
+
+  /* Focus & elevation */
+  --c-focus: 0 0 0 3px rgba(212,175,55,.35);
+  --elev-1: 0 10px 26px rgba(0,0,0,.28);
+  --elev-2: 0 14px 34px rgba(0,0,0,.35);
+  --elev-3: 0 18px 42px rgba(0,0,0,.42);
+
+  /* Links in this theme lean wine */
+  --c-link:        var(--brand-wine);
+  --c-link-hover:  var(--brand-wine-600);
+
+  color-scheme: dark;
+}
+
+/* ---------- App chrome / backgrounds ---------- */
+:root[data-theme="velvet"] body {
+  background: var(--c-bg);
+  color: var(--c-ink);
+}
+
+/* Atmosphere kept soft and warm */
+:root[data-theme="velvet"] body:not(.no-atmo) {
+  background:
+    radial-gradient(1200px 520px at 20% -120px, rgba(48,23,39,.14), transparent 60%),
+    radial-gradient(900px 480px at 85% -80px, rgba(212,175,55,.05), transparent 60%),
+    var(--c-bg);
+}
+
+/* ---------- Top navigation ---------- */
+:root[data-theme="velvet"] .topnav {
+  background: #301727;                 /* request: #301727 */
+  color: #F7F4ED;
   border-bottom: 1px solid rgba(212,175,55,.22);
+  box-shadow: var(--elev-2), inset 0 -1px 0 rgba(255,255,255,.04);
 }
-.modalTitle{
-  font-family: "Baskervville", serif;
-  font-size: clamp(18px, 2vw, 22px);
+:root[data-theme="velvet"] .topnav__links a { color: #F7F4ED; }
+
+/* ---------- Layer system ---------- */
+:root[data-theme="velvet"] .ui-section{
+  background: var(--c-surface-1);
+  color: var(--c-ink);
+  border: 1px solid var(--c-border-strong);
+  box-shadow: var(--elev-1);
+}
+:root[data-theme="velvet"] .ui-panel{
+  background: var(--c-surface-2);
+  color: var(--c-ink);
+  border: 1px solid var(--c-border-subtle);
+  box-shadow: var(--elev-1);
+}
+:root[data-theme="velvet"] .ui-card{
+  background: var(--c-card);
+  color: var(--c-ink);
+  border: 1px solid var(--c-border-subtle);
+  box-shadow: var(--elev-1);
+}
+
+/* Headings on dark remain warm-cream */
+:root[data-theme="velvet"] .ui-section h1,
+:root[data-theme="velvet"] .ui-section h2,
+:root[data-theme="velvet"] .ui-section h3,
+:root[data-theme="velvet"] .ui-panel   h1,
+:root[data-theme="velvet"] .ui-panel   h2,
+:root[data-theme="velvet"] .ui-panel   h3,
+:root[data-theme="velvet"] .ui-card    h1,
+:root[data-theme="velvet"] .ui-card    h2,
+:root[data-theme="velvet"] .ui-card    h3 {
+  color: var(--c-head);
+}
+
+/* ---------- Buttons ---------- */
+/* Primary → Wine (e.g., Quick View, primary CTAs) */
+:root[data-theme="velvet"] .btn,
+:root[data-theme="velvet"] .btn-charcoal {   /* remap charcoal to wine in this theme */
+  background: var(--brand-wine);
+  color: #F7F4ED;
+  border: 1px solid var(--brand-wine-600);
+  box-shadow: var(--elev-1);
+}
+:root[data-theme="velvet"] .btn:hover,
+:root[data-theme="velvet"] .btn-charcoal:hover {
+  background: var(--brand-wine-600);
+  border-color: var(--brand-gold-600);
+}
+:root[data-theme="velvet"] .btn:active,
+:root[data-theme="velvet"] .btn-charcoal:active {
+  background: var(--brand-wine-700);
+}
+
+/* Secondary → Gold (e.g., Add to Cart) */
+:root[data-theme="velvet"] .btn-outline-gold,
+:root[data-theme="velvet"] .btn--gold {
+  background: var(--brand-gold);
+  color: #301727;
+  border: 1px solid var(--brand-gold-600);
+}
+:root[data-theme="velvet"] .btn-outline-gold:hover,
+:root[data-theme="velvet"] .btn--gold:hover {
+  background: var(--brand-gold-300);
+}
+
+/* Focus ring across buttons */
+:root[data-theme="velvet"] .btn:focus-visible { box-shadow: var(--c-focus); }
+
+/* ---------- Wishlist heart: active = gold ---------- */
+:root[data-theme="velvet"] [aria-label="Add to wishList"][aria-pressed="true"],
+:root[data-theme="velvet"] .is-favorited,
+:root[data-theme="velvet"] .wishlist-btn[aria-pressed="true"] {
+  background: var(--brand-wine-700);
+  border-color: var(--brand-gold-600);
+  color: var(--brand-gold);
+}
+:root[data-theme="velvet"] [aria-label="Add to wishList"] svg,
+:root[data-theme="velvet"] .wishlist-btn svg {
+  fill: currentColor;
+}
+
+/* ---------- Links ---------- */
+:root[data-theme="velvet"] a,
+:root[data-theme="velvet"] .link,
+:root[data-theme="velvet"] .prose a {
+  color: var(--c-link);
+}
+:root[data-theme="velvet"] a:hover,
+:root[data-theme="velvet"] .link:hover,
+:root[data-theme="velvet"] .prose a:hover {
+  color: var(--c-link-hover);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- Inputs / chips ---------- */
+:root[data-theme="velvet"] .input {
+  background: color-mix(in srgb, var(--c-bg) 85%, #fff 15%);
+  color: var(--c-ink);
+  border: 1px solid var(--c-border-subtle);
+}
+:root[data-theme="velvet"] .input::placeholder { color: var(--c-ink-muted); }
+:root[data-theme="velvet"] .input:focus { border-color: var(--brand-gold-600); box-shadow: var(--c-focus); }
+
+/* ---------- Progress / meters ---------- */
+:root[data-theme="velvet"] .progress        { background: rgba(255,255,255,.10); }
+:root[data-theme="velvet"] .progress__fill  { background: var(--brand-gold); }
+
+/* ---------- Defensive resets for legacy light skins ---------- */
+:root[data-theme="velvet"] .card,
+:root[data-theme="velvet"] .card-legacy {
+  background: var(--c-card) !important;
+  color: var(--c-ink) !important;
+  border: 1px solid var(--c-border-subtle) !important;
+}
+
+/* ---------- Radar/graph default lines (so gold isn't harsh) ---------- */
+:root[data-theme="velvet"] .radar-grid line,
+:root[data-theme="velvet"] .radar-grid polygon {
+  stroke: color-mix(in srgb, var(--c-ink) 22%, transparent);
+}
+:root[data-theme="velvet"] .radar-shape {
+  fill: color-mix(in srgb, var(--brand-wine) 50%, transparent);
+  stroke: var(--brand-gold-600);
+}
+
+
+
+
+
+/* globals.css */
+html, body {
+  height: 100%;
+}
+body {
+  overflow: hidden; /* the page itself won't scroll */
+}
+
+
+/* ============================
+   Radar chart (Quick-View modal)
+   Theme-aware tokens + styling
+   ============================ */
+
+/* Chart tokens (sensible defaults) */
+:root{
+  --chart-ink: var(--c-ink);
+  --chart-grid: rgba(255,255,255,.15);
+  --chart-stroke: var(--brand-gold);
+  --chart-fill: color-mix(in srgb, var(--brand-wine) 28%, transparent);
+}
+
+/* Dark themes → light ink, soft light grid */
+:root[data-theme="charcoal"],
+:root[data-theme="velvet"]{
+  --chart-ink: rgba(249,249,249,.92);
+  --chart-grid: rgba(249,249,249,.18);
+  --chart-stroke: rgba(212,175,55,.75);
+  --chart-fill: color-mix(in srgb, var(--brand-wine) 30%, transparent);
+}
+
+/* Cream theme → darker ink & grid; keep fill subtle plum */
+:root[data-theme="cream"]{
+  --chart-ink: #2A1C1C; /* espresso text on cream */
+  --chart-grid: rgba(42,28,28,.20); /* soft espresso grid */
+  --chart-stroke: rgba(42,28,28,.55); /* outline darker than grid */
+  --chart-fill: color-mix(in srgb, var(--brand-wine) 22%, transparent);
+}
+
+/* Scope to the modal so other charts can keep their own look */
+.modalInner .recharts-wrapper{ overflow: visible; }
+
+/* Axis labels (category names & rings) — bigger & readable */
+.modalInner .recharts-polar-angle-axis text,
+.modalInner .recharts-polar-radius-axis text,
+.modalInner .recharts-polar-angle-axis-tick text,
+.modalInner .recharts-polar-radius-axis-tick text{
+  fill: var(--chart-ink) !important;
+  font-family: "Cormorant Garamond", serif;
+  font-size: clamp(14px, 1.15vw, 18px);
   letter-spacing: .2px;
-}
-.modalPrice{ font-weight: 700; color: var(--gold); letter-spacing: .2px; }
-.modalBody{
-  display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 18px;
-}
-@media (max-width: 860px){ .modalBody{ grid-template-columns: 1fr; } }
-.modalMedia{
-  border-radius: 14px; overflow: hidden; background: #0e0d0e; border: 1px solid var(--hairline);
-}
-.modalInfo{ display: grid; align-content: start; gap: 14px; }
-.modalClose{
-  width: 34px; height: 34px; border-radius: 10px;
-  border: 1px solid var(--hairline);
-  background: rgba(0,0,0,.25);
-  color: var(--text);
-}
-.modalClose:hover{ background: rgba(0,0,0,.35); }
-.modalClose:focus-visible{ outline: none; box-shadow: var(--focus-ring); }
-.modal-veil{
-  position: fixed;
-  inset: 0;
-  z-index: 110;      /* higher than nav and other overlays */
-  background: rgba(0,0,0,.55);
-  backdrop-filter: blur(4px);
-  display: grid;
-  place-items: center;
+  opacity: .95;
 }
 
-.modal-card{
-  width: min(720px,92vw);
-  max-height: 86vh;
-  overflow: auto;
-  border-radius: 20px;
+/* Grid & axis strokes */
+.modalInner .recharts-polar-grid polygon,
+.modalInner .recharts-polar-grid circle,
+.modalInner .recharts-polar-angle-axis line,
+.modalInner .recharts-polar-radius-axis line{
+  stroke: var(--chart-grid) !important;
 }
 
-@keyframes fadeUp {
-  from { opacity:0; transform: translateY(8px); }
-  to { opacity:1; transform: translateY(0); }
+/* Radar shape (the star) */
+.modalInner .recharts-radar polygon{
+  fill: var(--chart-fill) !important;
+  stroke: var(--chart-stroke) !important;
+  stroke-width: 2;
 }
 
-/* Quick View gallery helpers */
-.qv-body{ display:grid; grid-template-columns: 48% 1fr; gap: 20px; padding: 16px; }
-.qv-hero{ aspect-ratio: 1 / 1; background:#0a0a0a; border-radius: 14px; overflow:hidden; }
-.qv-thumbs{ display:flex; gap:10px; margin-top:10px; overflow-x:auto; }
-.qv-thumb{ width:72px; height:72px; border-radius:10px; overflow:hidden; border:1px solid #2a2a2a; opacity:.8; cursor:pointer; }
-.qv-thumb.active{ outline:2px solid var(--gold); opacity:1; }
-@media (max-width: 860px){ .qv-body{ grid-template-columns: 1fr; } }
- 
-.tabs button:focus-visible { outline: none; box-shadow: var(--focus); }
+/* Center dot / data points */
+.modalInner .recharts-radar-dot circle,
+.modalInner .recharts-polar-grid .recharts-dot circle{
+  fill: var(--chart-stroke) !important;
+  stroke: transparent !important;
+}
 
-/* heart hover */
-.card button[aria-label*="wishlist"] { transition: transform .12s ease, box-shadow .12s ease; }
-.card button[aria-label*="wishlist"]:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(212,175,55,.25); }
+/* track should not have padding that prevents full fill */
+.strength-track{
+  position: relative;
+  height: 10px;
+  border-radius: 9999px;
+  background: #191919;         /* or var(--hairline) dimmed */
+  overflow: hidden;            /* ensures the fill rounds cleanly */
+  /* no padding here */
+  border: none;                /* avoid 1px inset effect */
+}
+
+.strength-fill{
+  height: 100%;
+  border-radius: 9999px;       /* rounded leading edge */
+  background: var(--c-gold, #f4c86a);
+  transform: translateZ(0);    /* crisp on some GPUs */
+}
+
+
+.topnav__links a.is-active{
+  color: var(--c-gold);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

@@ -9,12 +9,27 @@ if (!url || !key) {
 
 const supabase = createClient(url, key, {
   auth: {
-    // ✅ keep the user signed in across reloads
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true, // handles magic-link redirects
+    detectSessionInUrl: true,
+    flowType: "pkce",               // modern auth flow
+  },
+    global: {
+    headers: { "x-client-info": "afrodezea-web" },
   },
 });
 
+if (import.meta.env.MODE === "development") {
+  window.__supabase = supabase;
+}
+
+
+
 export default supabase;
 export { supabase };
+
+
+// OPTIONAL (dev only): expose for console debugging
+if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+  window.supabase = supabase;
+}

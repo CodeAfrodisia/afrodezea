@@ -1,15 +1,5 @@
+// src/components/shop/NotesRadar.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-
-/**
- * props:
- *  - profile: object with 0..5 values (e.g. { floral: 4, fruity: 2, ... })
- *  - compact: boolean
- *
- * Notes:
- *  - Responsive: uses ResizeObserver to fit container width
- *  - Supports 5 or 8 axes (renders whatever is present in AXES_ORDER below,
- *    and falls back to 0 for missing keys)
- */
 
 const AXES_ORDER = [
   { key: "floral", label: "Floral" },
@@ -22,85 +12,140 @@ const AXES_ORDER = [
   { key: "smoky",  label: "Smoky"  },
 ];
 
-// If you want a 5-axis variant somewhere, pass a profile with only those keys;
-// the renderer gracefully shows whatever keys have values or default zeros.
-// Or change the order above to your preferred default.
+function cssVar(name, fallback) {
+  if (typeof window === "undefined") return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name)?.trim();
+  return v || fallback;
+}
 
-export default function NotesRadar({ profile = {}, compact = false }) {
+function getPalette() {
+  const theme = document?.documentElement?.dataset?.theme || "cream";
+  const wine = cssVar("--brand-wine", "#301727");
+  const gold = cssVar("--brand-gold", "rgb(212 175 55)");
+
+  if (theme === "charcoal" || theme === "velvet") {
+    return {
+      axisText: "rgba(249,249,249,.92)",
+      grid: "rgba(249,249,249,.20)",
+      gridOuter: "rgba(249,249,249,.38)",
+      stroke: gold,
+      dot: gold,
+      fill: `color-mix(in srgb, ${gold} 22%, transparent)`,
+    };
+  }
+  // cream
+  return {
+    axisText: "rgba(42,28,28,.95)",
+    grid: "rgba(42,28,28,.18)",
+    gridOuter: "rgba(42,28,28,.36)",
+    stroke: "rgba(42,28,28,.75)",
+    dot: "rgba(42,28,28,.85)",
+    fill: `color-mix(in srgb, ${cssVar("--brand-wine", "#301727")} 18%, transparent)`,
+  };
+}
+
+export default function NotesRadar({
+  profile = {},
+  compact = false,
+  chartScale = 0.9,       // a touch larger so max hits the edge visually
+  max = 5,
+  levels = 5,
+  animate = true,
+}) {
   const containerRef = useRef(null);
   const [width, setWidth] = useState(0);
 
-  // Responsive width via ResizeObserver
+  // Responsive width
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setWidth(Math.floor(entry.contentRect.width));
-      }
+      for (const entry of entries) setWidth(Math.floor(entry.contentRect.width));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  const size = Math.max(160, Math.min(420, width || (compact ? 240 : 300))); // clamp
-  const headingSize = compact ? 14 : 16;
-  const max = 5;
-  const levels = 5;
+  const colors = getPalette();
 
-  // Decide which axes to render:
-  // Show the axes from AXES_ORDER; if a key is missing in `profile`, treat as 0.
+  // size clamped for clarity
+  const size = Math.max(240, Math.min(460, width || (compact ? 320 : 380)));
+  const pad = compact ? 12 : 16;
+  const headingSize = Math.max(16, compact ? 16 : 18);
+
+  // labels a bit further out so the polygon can fill
+  const labelFontSize = Math.max(12, Math.round(size * 0.046));
+  const labelOffset   = Math.max(12, Math.round(size * 0.07));
+
+  // prep values (clamped)
   const axes = useMemo(() => AXES_ORDER, []);
   const vals = useMemo(() => {
-    const clamp = (v) => Math.max(0, Math.min(max, Number(v || 0)));
-    return axes.map(a => ({
-      label: a.label,
-      key: a.key,
-      value: clamp(profile[a.key]),
-    }));
-  }, [profile, axes]);
+    const clamp = (v) => Math.max(0, Math.min(max, Number(v ?? 0)));
+    return axes.map(a => clamp(profile[a.key]));
+  }, [profile, axes, max]);
 
-  // Geometry
-  const { cx, cy, r, angleStep, pts, gridLevels } = useMemo(() => {
-    const pad = compact ? 12 : 16;
-    const cx = size / 2;
-    const cy = size / 2;
-    const r = (size / 2) - pad;
-    const angleStep = (Math.PI * 2) / axes.length;
+  // geometry
+  const cx = size / 2;
+  const cy = size / 2;
+  const rBase = (size / 2) - pad;
+  const r = rBase * chartScale; // all rings + polygon use the same r (so max reaches outer)
 
-    // Grid rings (1..levels)
-    const gridLevels = [];
+  const angleStep = (Math.PI * 2) / axes.length;
+
+  // rings
+  const gridLevels = useMemo(() => {
+    const out = [];
     for (let lvl = 1; lvl <= levels; lvl++) {
       const frac = lvl / levels;
       const ring = axes.map((_, i) => {
-        const a = -Math.PI / 2 + i * angleStep; // start at top
+        const a = -Math.PI / 2 + i * angleStep;
         return [cx + Math.cos(a) * r * frac, cy + Math.sin(a) * r * frac];
       });
-      gridLevels.push(ring);
+      out.push(ring);
     }
+    return out;
+  }, [axes, r, angleStep, levels, cx, cy]);
 
-    // Data polygon
-    const pts = axes.map((a, i) => {
-      const v = vals[i]?.value ?? 0;
-      const aRad = -Math.PI / 2 + i * angleStep;
-      const rr = (v / max) * r;
-      return [cx + Math.cos(aRad) * rr, cy + Math.sin(aRad) * rr];
-    });
+  // polygon points (target)
+  const targetPts = useMemo(() => axes.map((_, i) => {
+    const v = vals[i];
+    const a = -Math.PI / 2 + i * angleStep;
+    // snap-to-edge if value is effectively max (avoids a hairline gap)
+    const rr = (Math.min(v, max) / max) * r * 1.002; // +0.2% visual nudge
+    return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr];
+  }), [axes, angleStep, vals, max, r, cx, cy]);
 
-    return { cx, cy, r, angleStep, pts, gridLevels };
-  }, [size, axes, vals, compact]);
+
+  // (optional) animation lerp
+  const [pts, setPts] = useState(targetPts);
+  useEffect(() => {
+    if (!animate) { setPts(targetPts); return; }
+    let raf = 0;
+    const D = 120; // ms
+    const start = performance.now();
+    const from = pts;
+
+    const tick = (t) => {
+      const f = Math.min(1, (t - start) / D);
+      const next = targetPts.map(([tx, ty], i) => {
+        const [fx, fy] = from[i] || targetPts[i];
+        return [fx + (tx - fx) * f, fy + (ty - fy) * f];
+      });
+      setPts(next);
+      if (f < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [targetPts, animate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const polygonPath = useMemo(() => pts.map(([x, y]) => `${x},${y}`).join(" "), [pts]);
 
-  // label helpers
-  const labelFontSize = compact ? 10 : 12;
-  const labelOffset = compact ? 8 : 12;
-
   return (
     <div className="glass" style={{ padding: 12, borderRadius: 16 }} ref={containerRef}>
-      <div className="heading" style={{ fontSize: headingSize, margin: "0 0 8px" }}>
+      <div className="heading" style={{ fontSize: headingSize, margin: "0 0 10px" }}>
         Scent Profile
       </div>
+
       <div style={{ width: "100%", height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Scent profile radar">
           {/* grid rings */}
@@ -109,8 +154,8 @@ export default function NotesRadar({ profile = {}, compact = false }) {
               key={`grid-${i}`}
               points={ring.map(([x, y]) => `${x},${y}`).join(" ")}
               fill="none"
-              stroke="rgba(255,255,255,.15)"
-              strokeWidth="1"
+              stroke={i === gridLevels.length - 1 ? colors.gridOuter : colors.grid}
+              strokeWidth={i === gridLevels.length - 1 ? 1.5 : 1}
             />
           ))}
 
@@ -126,7 +171,7 @@ export default function NotesRadar({ profile = {}, compact = false }) {
                 y1={cy}
                 x2={x}
                 y2={y}
-                stroke="rgba(255,255,255,.15)"
+                stroke={colors.grid}
                 strokeWidth="1"
               />
             );
@@ -135,14 +180,15 @@ export default function NotesRadar({ profile = {}, compact = false }) {
           {/* data polygon */}
           <polygon
             points={polygonPath}
-            fill="rgba(212,175,55,.28)"
-            stroke="rgba(212,175,55,.9)"
-            strokeWidth={2}
+            fill={colors.fill}
+            stroke={colors.stroke}
+            strokeWidth={1.5}
+            strokeLinejoin="round"
           />
 
           {/* vertex dots */}
           {pts.map(([x, y], i) => (
-            <circle key={`dot-${i}`} cx={x} cy={y} r={3} fill="rgba(212,175,55,.9)" />
+            <circle key={`dot-${i}`} cx={x} cy={y} r={3.5} fill={colors.dot} />
           ))}
 
           {/* labels */}
@@ -159,7 +205,7 @@ export default function NotesRadar({ profile = {}, compact = false }) {
                 y={ly}
                 textAnchor={anchor}
                 dominantBaseline="middle"
-                style={{ fontSize: labelFontSize, fill: "var(--muted)", opacity: 0.9 }}
+                style={{ fontSize: labelFontSize, fill: colors.axisText, fontWeight: 600 }}
               >
                 {a.label}
               </text>

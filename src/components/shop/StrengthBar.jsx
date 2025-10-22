@@ -1,7 +1,7 @@
 // src/components/shop/StrengthBar.jsx
 import React from "react";
 
-function clamp01to5(v) {
+function clamp0to5(v) {
   const n = Number(v ?? 0);
   if (Number.isNaN(n)) return 0;
   return Math.max(0, Math.min(5, n));
@@ -12,8 +12,9 @@ function clamp01to5(v) {
  * value: 0..5 (can be decimal)
  */
 export default function StrengthBar({ value = 0, label = "Fragrance Strength" }) {
-  const v = clamp01to5(value);
-  const pct = (v / 5) * 100;
+  const v = clamp0to5(value);
+  const isMax = v >= 5 - 1e-6;                 // snap at the edge
+  const pct = Math.min(100, (v / 5) * 100 + 0.75);
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -27,22 +28,25 @@ export default function StrengthBar({ value = 0, label = "Fragrance Strength" })
         style={{
           position: "relative",
           height: 12,
-          borderRadius: 999,
-          border: "1px solid var(--hairline)",
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)), #0f0c0f",
+          borderRadius: 9999,
+          background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)), #0f0c0f",
           overflow: "hidden",
+          // use inset hairline instead of border to avoid a 1–2px “gap” at the end
+          boxShadow: "inset 0 0 0 1px var(--hairline)",
         }}
       >
         {/* fill */}
         <div
           style={{
-            width: `${pct}%`,
+            width: isMax ? "100%" : `${pct}%`,
             height: "100%",
-            background:
-              "linear-gradient(90deg, #8a6b1f, #D4AF37 55%, #b89227)",
+            borderRadius: 9999,
+            background: "linear-gradient(90deg, #8a6b1f, #D4AF37 55%, #b89227)",
+            willChange: "width",
+            transform: "translateZ(0)", // crisper AA on some GPUs
           }}
         />
+
         {/* ticks */}
         {[1, 2, 3, 4].map((i) => (
           <div
@@ -55,6 +59,7 @@ export default function StrengthBar({ value = 0, label = "Fragrance Strength" })
               width: 1,
               background: "rgba(255,255,255,.12)",
               transform: "translateX(-0.5px)",
+              pointerEvents: "none",
             }}
           />
         ))}
@@ -68,4 +73,3 @@ export default function StrengthBar({ value = 0, label = "Fragrance Strength" })
     </div>
   );
 }
-

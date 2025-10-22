@@ -1,14 +1,18 @@
+// src/context/WishlistContext.jsx
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
-  useCallback,
 } from "react";
-import supabase from "../lib/supabaseClient.js";
+import supabase from "../lib/supabaseClient.js"; // default export in your project
 import { useAuth } from "./AuthContext.jsx";
+
+// ---------------- helpers ----------------
+const LS_KEY = "afd:wishlist";
 
 function normalizeId(input) {
   if (!input) return null;
@@ -17,57 +21,46 @@ function normalizeId(input) {
   return null;
 }
 
-const WishlistCtx = createContext(null);
-const LS_KEY = "afd:wishlist";
-
-// safe LS read
-function readLocal() {
+function safeReadLocal() {
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(LS_KEY);
     const arr = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(arr)) return [];
     return arr
-      .map((v) => (typeof v === "string" ? v : (v && typeof v.id === "string" ? v.id : null)))
+      .map((v) =>
+        typeof v === "string" ? v : v && typeof v.id === "string" ? v.id : null
+      )
       .filter((v) => typeof v === "string");
   } catch {
     return [];
   }
 }
 
-// safe LS write
-function writeLocal(idsArray) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(idsArray)); } catch {}
+function safeWriteLocal(ids) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(LS_KEY, JSON.stringify(ids)); } catch {}
 }
 
+// ---------------- context ----------------
+const WishlistCtx = createContext(null);
+
 export function WishlistProvider({ children }) {
-  const { user, loading: authLoading } = useAuth();
+  // IMPORTANT: use the correct prop from AuthContext
+  const { user, authLoading } = useAuth();
   const userId = user?.id || null;
 
-  // Ensure a profiles row exists (id only)
-  useEffect(() => {
-    if (!userId) return;
-    (async () => {
-      try {
-        const { error: upErr } = await supabase
-          .from("profiles")
-          .upsert({ id: userId }, { onConflict: "id" });
-        if (upErr) console.error("[profiles] upsert failed:", upErr);
-      } catch (e) {
-        console.error("[profiles] ensure profile failed:", e);
-      }
-    })();
-  }, [userId]);
-
-  const [localSet, setLocalSet] = useState(() => new Set(typeof window !== "undefined" ? readLocal() : []));
+  // Guest set (localStorage) and authed set (server)
+  const [localSet, setLocalSet] = useState(() => new Set(safeReadLocal()));
   const [serverSet, setServerSet] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
 
-  // Persist guest list to LS
+  // Persist guest list to LS whenever it changes (only when signed out)
   useEffect(() => {
-    if (!userId) writeLocal(Array.from(localSet));
+    if (!userId) safeWriteLocal(Array.from(localSet));
   }, [localSet, userId]);
 
-  // Load server wishlist when auth ready (SCOPED BY USER)
+  // Load server wishlist once auth state is known
   useEffect(() => {
     if (authLoading) return;
     if (!userId) { setServerSet(new Set()); return; }
@@ -93,7 +86,7 @@ export function WishlistProvider({ children }) {
     return () => { alive = false; };
   }, [authLoading, userId]);
 
-  // On login: one-shot merge guest -> server, then refresh canonical from server
+  // On first login: merge guest -> server then refresh
   const mergedOnce = useRef(false);
   useEffect(() => {
     if (authLoading || !userId) { mergedOnce.current = false; return; }
@@ -102,16 +95,21 @@ export function WishlistProvider({ children }) {
 
     (async () => {
       try {
-        const rows = Array.from(localSet).map((pid) => ({ user_id: userId, product_id: pid }));
+        const rows = Array.from(localSet).map((pid) => ({
+          user_id: userId,
+          product_id: pid,
+        }));
         if (rows.length) {
-          const { error } = await supabase.from("wishlist").upsert(rows, { onConflict: "user_id,product_id" });
+          const { error } = await supabase
+            .from("wishlist")
+            .upsert(rows, { onConflict: "user_id,product_id" });
           if (error) throw error;
         }
-        // clear local guest list
-        setLocalSet(new Set());
-        writeLocal([]);
 
-        // refresh scoped by user
+        // Clear guest list and refresh canonical set from server
+        setLocalSet(new Set());
+        safeWriteLocal([]);
+
         const { data, error: fetchErr } = await supabase
           .from("wishlist")
           .select("product_id")
@@ -125,30 +123,38 @@ export function WishlistProvider({ children }) {
     })();
   }, [authLoading, userId, localSet]);
 
+  // Source of truth exposed to consumers
   const activeSet = userId ? serverSet : localSet;
 
-  const isFav = useCallback((productId) => activeSet.has(productId), [activeSet]);
-  const has = isFav;
+  const isFav = useCallback(
+    (productId) => activeSet.has(productId),
+    [activeSet]
+  );
+  const has = isFav; // alias/back-compat
 
   const toggle = useCallback(
-    async (productId, _meta) => {
+    async (productId) => {
       const pid = normalizeId(productId);
       if (!pid) {
         console.warn("[wishlist] toggle called with invalid id:", productId);
         return;
       }
 
+      // Guest mode: purely local
       if (!userId) {
         setLocalSet((prev) => {
           const next = new Set(prev);
-          if (next.has(pid)) next.delete(pid); else next.add(pid);
+          if (next.has(pid)) next.delete(pid);
+          else next.add(pid);
           return next;
         });
         return;
       }
 
+      // Authed: optimistic update, then persist
       const inServer = serverSet.has(pid);
 
+      // optimistic flip
       setServerSet((prev) => {
         const next = new Set(prev);
         if (inServer) next.delete(pid); else next.add(pid);
@@ -157,7 +163,10 @@ export function WishlistProvider({ children }) {
 
       try {
         if (inServer) {
-          const { error } = await supabase.from("wishlist").delete().match({ user_id: userId, product_id: pid });
+          const { error } = await supabase
+            .from("wishlist")
+            .delete()
+            .match({ user_id: userId, product_id: pid });
           if (error) throw error;
         } else {
           const { error } = await supabase
@@ -167,7 +176,7 @@ export function WishlistProvider({ children }) {
         }
       } catch (e) {
         console.error("[wishlist] toggle failed", e);
-        // rollback
+        // rollback optimistic change
         setServerSet((prev) => {
           const next = new Set(prev);
           if (inServer) next.add(pid); else next.delete(pid);
@@ -181,13 +190,13 @@ export function WishlistProvider({ children }) {
   const value = useMemo(
     () => ({
       isFav,
+      has,
       toggle,
       ids: Array.from(activeSet).filter((v) => typeof v === "string"),
       loading: busy || authLoading,
       signedIn: !!userId,
-      has, // alias for back-compat
     }),
-    [isFav, toggle, activeSet, busy, authLoading, userId, has]
+    [isFav, has, toggle, activeSet, busy, authLoading, userId]
   );
 
   return <WishlistCtx.Provider value={value}>{children}</WishlistCtx.Provider>;
