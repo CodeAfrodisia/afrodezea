@@ -5,10 +5,10 @@ import { Link } from "react-router-dom";
 import { getSiteOrigin } from "@lib/site.js";
 
 import LogoWithVideoMask from "@components/LogoWithVideoMask.jsx";
-import logoPng from "../../../assets/candle-no-stick.png";
 
-// If the file is in project-root/public/video/candlelight.mp4
+// If the files are in project-root/public/...
 const flameMp4 = "/video/candlelight.mp4";
+const logoPng  = "/public/candle-no-stick.png";
 
 export default function Home() {
   const origin = getSiteOrigin();
@@ -28,20 +28,18 @@ export default function Home() {
 
           <div style={{ margin: "16px 0 18px" }}>
             <LogoWithVideoMask
-  logoSrc={logoPng}
-  mp4Src="/video/candlelight.mp4"
-  width="clamp(150px, 16vw, 220px)"
-  aspect={1.55}
-  glass
-  crossfade
-  fadeDuration={0.7}     // tweak 0.5–1.2s to taste
-  videoScale={1.25}
-  videoPosX="50%"
-  videoPosY="60%"
-  debugUnmasked={false}        // ⬅ shows the raw video rectangle
-/>
-
-
+              logoSrc={logoPng}
+              mp4Src={flameMp4}
+              width="clamp(150px, 16vw, 220px)"
+              aspect={1.55}
+              glass
+              crossfade
+              fadeDuration={0.7}  // tweak 0.5–1.2s to taste
+              videoScale={1.25}
+              videoPosX="50%"
+              videoPosY="60%"
+              debugUnmasked={false}
+            />
           </div>
 
           <div style={actions}>
