@@ -3,22 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 /**
  * Video-in-logo mask with optional crossfade looping and glass highlights.
- *
- * Props:
- *  - logoSrc: PNG with transparency
- *  - mp4Src, webmSrc?: video sources
- *  - poster?: image while buffering
- *  - width?: CSS width (e.g. "clamp(150px,16vw,220px)")
- *  - aspect?: number (logo width/height, ≈1.55 for your asset)
- *  - glass?: boolean (enable specular overlays)
- *  - glassIntensity?: number (0.6 subtle … 1.3 bold)
- *  - ambientGlow?: boolean (soft background glow)
- *  - crossfade?: boolean (true = 2 videos fade between loops)
- *  - fadeDuration?: seconds (crossfade time)
- *  - pauseOffscreen?: boolean (use IntersectionObserver)
- *  - videoScale?: number (zoom the video)
- *  - videoPosX/PosY?: CSS positions for object-position
- *  - debugUnmasked?: boolean (show raw video instead of masked)
+ * (Shorthand mask fixed for prod: use explicit mask properties + static fallback.)
  */
 export default function LogoWithVideoMask({
   // assets
@@ -55,6 +40,7 @@ export default function LogoWithVideoMask({
   const [active, setActive]   = useState(0);     // 0 or 1: which is on top
   const [ready, setReady]     = useState(false);
   const [duration, setDur]    = useState(0);
+  const [videoErr, setVideoErr] = useState(false);
 
   /* ---------------- helpers ---------------- */
   const safePlay = (el) => {
@@ -94,7 +80,10 @@ export default function LogoWithVideoMask({
         if (crossfade && v1.current) safePlay(v1.current);
       }
     };
+    const onErr = () => setVideoErr(true);
+
     a.addEventListener("loadedmetadata", onMeta, { once: true });
+    a.addEventListener("error", onErr);
     if (a.readyState >= 1) onMeta();
 
     const onWake = () => {
@@ -126,6 +115,7 @@ export default function LogoWithVideoMask({
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
       a.removeEventListener("loadedmetadata", onMeta);
+      a.removeEventListener("error", onErr);
     };
   }, [crossfade, active]);
 
@@ -205,18 +195,25 @@ export default function LogoWithVideoMask({
     position: "relative",
     display: "block",
     width: typeof width === "number" ? `${width}px` : width,
-    aspectRatio: aspect,
+    aspectRatio: String(aspect),
     isolation: "isolate",
     marginInline: "auto",
   };
 
-  const stack = { position: "relative", width: "100%", aspectRatio: aspect };
+  const stack = { position: "relative", width: "100%", aspectRatio: String(aspect) };
 
-  const maskStyle = debugUnmasked ? {} : {
+  // ✅ EXPLICIT mask props (avoid shorthand that breaks on prod Safari/Chromium)
+  const maskBoxStyle = debugUnmasked ? {} : {
     position: "absolute",
     inset: 0,
-    WebkitMask: `url("${logoSrc}") no-repeat center / contain`,
-    mask: `url("${logoSrc}") no-repeat center / contain`,
+    WebkitMaskImage: `url("${logoSrc}")`,
+    maskImage: `url("${logoSrc}")`,
+    WebkitMaskRepeat: "no-repeat",
+    maskRepeat: "no-repeat",
+    WebkitMaskPosition: "center",
+    maskPosition: "center",
+    WebkitMaskSize: "contain",
+    maskSize: "contain",
     overflow: "hidden",
   };
 
@@ -236,12 +233,22 @@ export default function LogoWithVideoMask({
     opacity: 0, // scheduler sets active → 1
   };
 
-  // Glass layers
+  // Glass layers (unchanged)
+  const commonMasked = debugUnmasked ? {} : {
+    WebkitMaskImage: `url("${logoSrc}")`,
+    maskImage: `url("${logoSrc}")`,
+    WebkitMaskRepeat: "no-repeat",
+    maskRepeat: "no-repeat",
+    WebkitMaskPosition: "center",
+    maskPosition: "center",
+    WebkitMaskSize: "contain",
+    maskSize: "contain",
+  };
+
   const glassStyle = {
     position: "absolute",
     inset: 0,
-    WebkitMask: `url("${logoSrc}") no-repeat center / contain`,
-    mask: `url("${logoSrc}") no-repeat center / contain`,
+    ...commonMasked,
     background:
       `radial-gradient(42% 28% at 50% 24%, rgba(255,240,200,${0.45 * glassIntensity}), transparent 70%),
        linear-gradient(to bottom,
@@ -256,8 +263,7 @@ export default function LogoWithVideoMask({
   const rimStyle = {
     position: "absolute",
     inset: 0,
-    WebkitMask: `url("${logoSrc}") no-repeat center / contain`,
-    mask: `url("${logoSrc}") no-repeat center / contain`,
+    ...commonMasked,
     background:
       `radial-gradient(65% 55% at 50% 35%, rgba(255,255,255,${0.18 * glassIntensity}), transparent 72%),
        radial-gradient(90% 80% at 50% 60%, rgba(0,0,0,${0.10 * glassIntensity}), transparent 78%)`,
@@ -270,8 +276,7 @@ export default function LogoWithVideoMask({
   const sweepStyle = {
     position: "absolute",
     inset: 0,
-    WebkitMask: `url("${logoSrc}") no-repeat center / contain`,
-    mask: `url("${logoSrc}") no-repeat center / contain`,
+    ...commonMasked,
     background:
       `linear-gradient(115deg,
         transparent 15%,
@@ -299,6 +304,28 @@ export default function LogoWithVideoMask({
     pointerEvents: "none",
   };
 
+  // Static fallback logo layer (always present behind video so it never looks empty)
+  const fallbackLayer = (
+    <div style={{
+      position: "absolute",
+      inset: 0,
+      display: "grid",
+      placeItems: "center",
+      opacity: (ready && !videoErr) ? 0 : 1,
+      transition: `opacity ${fadeDuration}s ease`,
+    }}>
+      {logoSrc ? (
+        <img
+          src={logoSrc}
+          alt="Afrodezea"
+          style={{ maxWidth: "100%", maxHeight: "100%", display: "block" }}
+          loading="eager"
+          decoding="async"
+        />
+      ) : null}
+    </div>
+  );
+
   /* ---------------- render ---------------- */
   return (
     <div style={wrapStyle} aria-hidden>
@@ -315,7 +342,11 @@ export default function LogoWithVideoMask({
       {ambientGlow && <div style={glowStyle} />}
 
       <div style={stack}>
-        <div style={maskStyle}>
+        {/* Static logo behind the masked video */}
+        {fallbackLayer}
+
+        {/* Masked video box */}
+        <div style={maskBoxStyle}>
           {/* Video A (visible immediately) */}
           <video
             ref={v0}
@@ -325,6 +356,7 @@ export default function LogoWithVideoMask({
             preload="auto"
             poster={poster || undefined}
             style={{ ...videoBase, opacity: 1 }}
+            onError={() => setVideoErr(true)}
             onLoadedData={() => { try { v0.current && (v0.current.style.opacity = "1"); } catch {} }}
           >
             {webmSrc ? <source src={webmSrc} type="video/webm" /> : null}
@@ -339,6 +371,7 @@ export default function LogoWithVideoMask({
               muted
               autoPlay
               preload="auto"
+              onError={() => setVideoErr(true)}
               style={videoBase}
             >
               {webmSrc ? <source src={webmSrc} type="video/webm" /> : null}

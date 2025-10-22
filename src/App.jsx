@@ -242,10 +242,10 @@ export default function App() {
           </Suspense>
         </ErrorBoundary>
 
-        - {/* <Footer variant="compact" /> */}
-+ {/* Smart, page-aware footer (phase 1) */}
-+ {/* You can keep your existing <Footer /> around and switch by prop later */}
-+ {true && <FooterSmart />}
+         {/* <Footer variant="compact" /> */}
+ {/* Smart, page-aware footer (phase 1) */}
+ {/* You can keep your existing <Footer /> around and switch by prop later */}
+ {true && <FooterSmart />}
 
         <CartDrawer />
       </div>

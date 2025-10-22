@@ -235,22 +235,32 @@ export default function HeroWelcomeAffirmation({
         “{affirmationText}”
       </blockquote>
 
-      {/* Save button only if provided (kept subtle; ghost) */}
-      {onSaveAffirmation && (
-        <div
-          style={{
-            marginTop: 20,
-            display: "flex",
-            gap: 8,
-            justifyContent: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <button className="btn btn--ghost" onClick={handleSaveAff}>
-            Save affirmation
-          </button>
-        </div>
-      )}
+      {/* Save button only if provided (kept subtle; compact ghost) */}
+{onSaveAffirmation && (
+  <div
+    style={{
+      marginTop: 12,
+      display: "flex",
+      justifyContent: "center",
+    }}
+  >
+    <button
+      className="btn btn--ghost"
+      onClick={handleSaveAff}
+      aria-label="Save affirmation"
+      style={{
+        padding: "6px 12px",
+        fontSize: "clamp(12px, 1.1vw, 14px)",
+        lineHeight: 1.1,
+        borderRadius: 999,
+        opacity: 0.9,
+      }}
+    >
+      Save affirmation
+    </button>
+  </div>
+)}
+
 
       {/* (Optional) Provenance hint if you want: keep off by default to avoid clutter */}
       {data?.provenance?.cached ? (
