@@ -1398,17 +1398,6 @@ h3{ font-size:clamp(18px,2.4vw,24px); line-height:1.2; }
 
 
 
-
-
-/* globals.css */
-html, body {
-  height: 100%;
-}
-body {
-  overflow: hidden; /* the page itself won't scroll */
-}
-
-
 /* ============================
    Radar chart (Quick-View modal)
    Theme-aware tokens + styling
@@ -1500,3 +1489,17 @@ body {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Robust viewport var: prefer dynamic viewport on modern browsers, fall back to 100vh */
+:root { --vh: 100dvh; }           /* dynamic viewport (accounts for browser bars) */
+@supports not (height: 100dvh) {
+  :root { --vh: 100vh; }          /* fallback for older browsers */
+}
+
+/* Never globally kill scrolling */
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+}
+
+/* If you previously had `overflow: hidden` anywhere on html/body, remove it. */

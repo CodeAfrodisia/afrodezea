@@ -1,0 +1,1 @@
+import{j as e,L as n}from"./index-Cfo4WONF.js";function s(){return e.jsxs("div",{className:"container",style:{padding:24},children:[e.jsx("h1",{children:"Page not found"}),e.jsx("p",{children:"The page you’re looking for doesn’t exist."}),e.jsx(n,{className:"btn btn--gold",to:"/",children:"Go home"})]})}export{s as default};
