@@ -1,11 +1,15 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+
+  
   "rewrites": [
-    {
-      "source": "/:path*",
-      "missing": [{ "type": "filesystem" }],
-      "destination": "/index.html"
-    }
+    { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
+    { "source": "/robots.txt",  "destination": "/robots.txt" }
+  ],
+
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
