@@ -14,7 +14,9 @@
       ]
     }
   ],
+  "trailingSlash": false,
   "rewrites": [
+    { "source": "/(api|_next|favicon\\.ico|robots\\.txt|sitemap\\.xml|assets/.*)", "destination": "/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
