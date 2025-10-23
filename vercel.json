@@ -1,22 +1,11 @@
 {
   "cleanUrls": true,
-  "headers": [
-    {
-      "source": "/assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public,max-age=31536000,immutable" }
-      ]
-    },
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public,max-age=0,must-revalidate" }
-      ]
-    }
-  ],
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/(api|_next|favicon\\.ico|robots\\.txt|sitemap\\.xml|assets/.*)", "destination": "/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/:path*",
+      "missing": [{ "type": "filesystem" }],
+      "destination": "/index.html"
+    }
   ]
 }
