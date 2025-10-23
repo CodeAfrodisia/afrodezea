@@ -5,14 +5,16 @@ import React, {
   useRef,
   useState,
   useLayoutEffect,
+  Suspense,
 } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
+
 import { searchProducts } from "../lib/productsSupabase.js";
 import ProductsGrid from "../components/shop/ProductsGrid.jsx";
 import CollectionTabs from "../components/shop/CollectionTabs.jsx";
 import Filters from "../components/shop/Filters.jsx";
 import { getSiteOrigin } from "../lib/site.js";
-import { Helmet } from "react-helmet-async";
 
 const QuickViewModal = React.lazy(() =>
   import("../components/shop/QuickViewModal.jsx")
@@ -45,7 +47,7 @@ function Chip({ children, onClick }) {
       style={{
         padding: "6px 10px",
         borderRadius: 999,
-        border: "1px solid var(--hairline)",
+        border: "1px solid var(--c-border-subtle)",
         background: "rgba(212,175,55,.10)",
         color: "inherit",
         cursor: "pointer",
@@ -240,38 +242,51 @@ export default function ProductsPage() {
     };
   }, [query, activeCollection, tags.join("|"), min, max, order]);
 
-// ---------- measure the REAL column count ----------
-const gridRef = useRef(null); // pass this to the actual grid element
-const [columns, setColumns] = useState(4);
+  // ---------- Layout & measurement ----------
+  // Match ProductsGrid props
+  const GAP = 24;     // inter-card gap in px (must match ProductsGrid)
+  const CARD_W = 300; // minimum card width in px (must match ProductsGrid)
 
+  // Observe the products area width → compute how many full cards fit
+  const gridWrapRef = useRef(null);
+  const [columns, setColumns] = useState(4);
 
+  // Also decide if the layout should collapse the left rail on narrow screens
+  const frameRef = useRef(null);
+  const [isNarrow, setIsNarrow] = useState(false); // breakpoint ~ 980px
 
-  const GAP = 24;       // must match ProductsGrid
-  const CARD_W = 300; // must match ProductsGrid
+  // columns calc
+  useEffect(() => {
+    const el = gridWrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
 
-  // replace gridRef with a WRAPPER ref:
-const gridWrapRef = useRef(null);
+    const calc = (width) => {
+      const w = width ?? el.clientWidth ?? 0;
+      // How many full tracks (CARD_W + GAP) fit in the wrapper width?
+      const cols = Math.max(1, Math.floor((w + GAP) / (CARD_W + GAP)));
+      setColumns(cols);
+    };
 
+    const ro = new ResizeObserver(([entry]) => calc(entry?.contentRect?.width));
+    ro.observe(el);
+    calc();
+    return () => ro.disconnect();
+  }, []);
 
-useEffect(() => {
-  const el = gridWrapRef.current;
-  if (!el || typeof ResizeObserver === "undefined") return;
+  // narrow mode calc (affects grid template with/without sidebar)
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
 
-  const calc = (width) => {
-    const w = width ?? el.clientWidth ?? 0;
-    // how many full tracks (card + gap) fit in the wrapper width?
-    const cols = Math.max(1, Math.floor((w + GAP) / (CARD_W + GAP)));
-    setColumns(cols);
-  };
-
-  const ro = new ResizeObserver(([entry]) => calc(entry?.contentRect?.width));
-  ro.observe(el);
-  calc(); // initial
-  return () => ro.disconnect();
-}, []);
-
-
-
+    const onResize = ([entry]) => {
+      const w = entry?.contentRect?.width ?? el.clientWidth ?? 0;
+      setIsNarrow(w < 980);
+    };
+    const ro = new ResizeObserver(onResize);
+    ro.observe(el);
+    onResize([{ contentRect: { width: el.clientWidth } }]);
+    return () => ro.disconnect();
+  }, []);
 
   // ---------- derive 2-row slice ----------
   const perSlide = 2 * Math.max(1, columns);
@@ -285,12 +300,8 @@ useEffect(() => {
   const start = (slide - 1) * perSlide;
   const visible = (rows || []).slice(start, start + perSlide);
 
-  // ---------- layout constants ----------
-  const HEADER_H = 72; // adjust to your header height
-  const SIDEBAR_W = 280;
-useEffect(() => {
-  console.log({ columns, perSlide: 2 * columns, visible: visible.length });
-}, [columns, visible.length]);
+  // For sticky aside: read the nav height from CSS var (fallback 64px)
+  const TOPNAV = "var(--topnav-h, 64px)";
 
   return (
     <>
@@ -320,296 +331,293 @@ useEffect(() => {
         </script>
       )}
 
-      <React.Suspense fallback={null}>
+      <Suspense fallback={null}>
         <QuickViewModal
           key={quickProduct?.id || "empty"}
           open={quickOpen}
           onClose={() => setQuickOpen(false)}
           product={quickProduct}
         />
-      </React.Suspense>
+      </Suspense>
 
+      {/* ==== PAGE FRAME (no fixed height; grows naturally; bottom
+             spacing handled by --footer-height from useViewportChrome) ==== */}
       <div
-  className="container"
-  style={{
-    padding: 24,
-    height: `calc(100vh - ${HEADER_H}px)`,
-    // do not clip horizontally; keep vertical lock
-    //overflowY: "hidden",
-   // overflowX: "visible",
-    display: "grid",
-    gridTemplateColumns: `${SIDEBAR_W}px 1fr`,
-    gridTemplateRows: "auto 1fr",                    // header + body
-    gridTemplateAreas: '"header header" "aside main"', // ✅ single string
-    gap: 24,
-  }}
->
-  {/* Shared header — spans both columns */}
-  <div style={{ gridArea: "header", opacity: 0.85 }}>
-    {loading
-      ? "Loading…"
-      : `${total} result${total === 1 ? "" : "s"}`}
-    {query ? ` for “${query}”` : ""}
-    {activeCollection !== "all" ? ` in ${activeCollection}` : ""}
-  </div>
-          {/* Sidebar */}
-  <aside
-    style={{
-      gridArea: "aside",
-      position: "sticky",
-      top: 84,
-      alignSelf: "start",
-      maxHeight: "100%",
-      overflow: "auto",
-    }}
-  >
-            <div className="surface" style={{ padding: 12 }}>
-              <CollectionTabs
-                tabs={COLLECTIONS}
-                active={activeCollection}
-                onChange={(key) => {
-                  setActiveCollection(key);
-                  setSlide(1);
-                }}
-              />
-            </div>
-            <div style={{ height: 12 }} />
-            <div className="surface" style={{ padding: 12 }}>
-              <Filters
-                query={query}
-                onQueryChange={(val) => {
-                  setQuery(val);
-                  setSlide(1);
-                }}
-                selectedTags={tags}
-                onToggleTag={(t) => {
-                  onToggleTag(t);
-                }}
-                tagsCatalog={tagCatalog}
-                // Filters UI takes dollars; convert to cents for state
-                minPrice={min != null ? Math.round(min / 100) : null}
-                maxPrice={max != null ? Math.round(max / 100) : null}
-                onPriceChange={(minDollars, maxDollars) => {
-                  const mMin =
-                    minDollars == null ? null : Math.round(Number(minDollars) * 100);
-                  const mMax =
-                    maxDollars == null ? null : Math.round(Number(maxDollars) * 100);
-                  onPrice(mMin, mMax);
-                }}
-                order={order}
-                onOrderChange={(v) => {
-                  onOrder(v);
-                }}
-              />
-            </div>
-          </aside>
+        ref={frameRef}
+        className="container"
+        style={{
+          padding: 24,
+          paddingBottom: "calc(var(--footer-height, 0px) + 16px)",
+          display: "grid",
+          gap: 24,
+          gridTemplateColumns: isNarrow ? "1fr" : "280px 1fr",
+          gridTemplateAreas: isNarrow
+            ? `"header" "aside" "main"`
+            : `"header header" "aside main"`,
+        }}
+      >
+        {/* Header (spans columns in wide mode) */}
+        <div style={{ gridArea: "header", opacity: 0.85 }}>
+          {loading ? "Loading…" : `${total} result${total === 1 ? "" : "s"}`}
+          {query ? ` for “${query}”` : ""}
+          {activeCollection !== "all" ? ` in ${activeCollection}` : ""}
+        </div>
 
-          {/* Main (no vertical scroll) */}
-          <main
-    style={{
-      gridArea: "main",
-      height: "100%",
-      minHeight: 0,
-     // overflowY: "hidden",
-      //overflowX: "visible",
-      display: "flex",
-      flexDirection: "column",
-    }}
-  >
-            
+        {/* Sidebar / Filters */}
+        <aside
+          style={{
+            gridArea: "aside",
+            position: isNarrow ? "static" : "sticky",
+            top: isNarrow ? undefined : `calc(${TOPNAV} + 16px)`,
+            alignSelf: "start",
+            maxHeight: isNarrow ? "none" : "calc(var(--vh) - 16px - 16px - 1px)",
+            overflow: isNarrow ? "visible" : "auto",
+          }}
+        >
+          <div className="surface" style={{ padding: 12 }}>
+            <CollectionTabs
+              tabs={COLLECTIONS}
+              active={activeCollection}
+              onChange={(key) => {
+                setActiveCollection(key);
+                setSlide(1);
+              }}
+            />
+          </div>
+          <div style={{ height: 12 }} />
+          <div className="surface" style={{ padding: 12 }}>
+            <Filters
+              query={query}
+              onQueryChange={(val) => {
+                setQuery(val);
+                setSlide(1);
+              }}
+              selectedTags={tags}
+              onToggleTag={(t) => {
+                onToggleTag(t);
+              }}
+              tagsCatalog={tagCatalog}
+              // Filters UI takes dollars; convert to cents for state
+              minPrice={min != null ? Math.round(min / 100) : null}
+              maxPrice={max != null ? Math.round(max / 100) : null}
+              onPriceChange={(minDollars, maxDollars) => {
+                const mMin =
+                  minDollars == null ? null : Math.round(Number(minDollars) * 100);
+                const mMax =
+                  maxDollars == null ? null : Math.round(Number(maxDollars) * 100);
+                onPrice(mMin, mMax);
+              }}
+              order={order}
+              onOrderChange={(v) => {
+                onOrder(v);
+              }}
+            />
+          </div>
+        </aside>
 
-            {/* Content area */}
-            <div style={{ position: "relative", flex: "1 1 auto" }}>
-              {loading ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-                    gap: 20,
-                  }}
-                >
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        height: 320,
-                        borderRadius: 16,
-                        background:
-                          "linear-gradient(90deg,#151515,#1a1a1a,#151515)",
-                        animation: "shimmer 1.2s linear infinite",
-                        backgroundSize: "300% 100%",
-                      }}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <>
-                  {(tags.length ||
-                    min != null ||
-                    max != null ||
-                    order !== "new" ||
-                    query ||
-                    activeCollection !== "all") && (
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        marginBottom: 12,
-                      }}
-                    >
-                      {activeCollection !== "all" && (
-                        <Chip
-                          onClick={() => {
-                            setActiveCollection("all");
-                            setSlide(1);
-                          }}
-                        >
-                          Collection: {activeCollection} ×
-                        </Chip>
-                      )}
-                      {query && (
-                        <Chip
-                          onClick={() => {
-                            setQuery("");
-                            setSlide(1);
-                          }}
-                        >
-                          Search: “{query}” ×
-                        </Chip>
-                      )}
-                      {tags.map((t) => (
-                        <Chip
-                          key={t}
-                          onClick={() => {
-                            onToggleTag(t);
-                            setSlide(1);
-                          }}
-                        >
-                          {t} ×
-                        </Chip>
-                      ))}
-                      {min != null && (
-                        <Chip
-                          onClick={() => {
-                            onPrice(null, max);
-                            setSlide(1);
-                          }}
-                        >
-                          Min ${Math.round(min / 100)} ×
-                        </Chip>
-                      )}
-                      {max != null && (
-                        <Chip
-                          onClick={() => {
-                            onPrice(min, null);
-                            setSlide(1);
-                          }}
-                        >
-                          Max ${Math.round(max / 100)} ×
-                        </Chip>
-                      )}
-                      {order !== "new" && (
-                        <Chip
-                          onClick={() => {
-                            onOrder("new");
-                            setSlide(1);
-                          }}
-                        >
-                          Sort {order.replace("_", " ")} ×
-                        </Chip>
-                      )}
-                      <button
-                        className="btn btn--ghost"
+        {/* Main */}
+        <main
+          style={{
+            gridArea: "main",
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0, // prevents accidental overflow
+          }}
+        >
+          <div style={{ position: "relative", flex: "1 1 auto" }}>
+            {loading ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                  gap: 20,
+                }}
+              >
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      height: 320,
+                      borderRadius: 16,
+                      background:
+                        "linear-gradient(90deg,#151515,#1a1a1a,#151515)",
+                      animation: "shimmer 1.2s linear infinite",
+                      backgroundSize: "300% 100%",
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                {(tags.length ||
+                  min != null ||
+                  max != null ||
+                  order !== "new" ||
+                  query ||
+                  activeCollection !== "all") && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                      marginBottom: 12,
+                    }}
+                  >
+                    {activeCollection !== "all" && (
+                      <Chip
                         onClick={() => {
                           setActiveCollection("all");
+                          setSlide(1);
+                        }}
+                      >
+                        Collection: {activeCollection} ×
+                      </Chip>
+                    )}
+                    {query && (
+                      <Chip
+                        onClick={() => {
                           setQuery("");
-                          setTags([]);
-                          onPrice(null, null);
+                          setSlide(1);
+                        }}
+                      >
+                        Search: “{query}” ×
+                      </Chip>
+                    )}
+                    {tags.map((t) => (
+                      <Chip
+                        key={t}
+                        onClick={() => {
+                          onToggleTag(t);
+                          setSlide(1);
+                        }}
+                      >
+                        {t} ×
+                      </Chip>
+                    ))}
+                    {min != null && (
+                      <Chip
+                        onClick={() => {
+                          onPrice(null, max);
+                          setSlide(1);
+                        }}
+                      >
+                        Min ${Math.round(min / 100)} ×
+                      </Chip>
+                    )}
+                    {max != null && (
+                      <Chip
+                        onClick={() => {
+                          onPrice(min, null);
+                          setSlide(1);
+                        }}
+                      >
+                        Max ${Math.round(max / 100)} ×
+                      </Chip>
+                    )}
+                    {order !== "new" && (
+                      <Chip
+                        onClick={() => {
                           onOrder("new");
                           setSlide(1);
                         }}
                       >
-                        Clear all
-                      </button>
-                    </div>
-                  )}
-
-                  {err && (
-                    <div
-                      className="surface"
-                      style={{
-                        padding: 12,
-                        marginBottom: 12,
-                        border: "1px solid var(--hairline)",
+                        Sort {order.replace("_", " ")} ×
+                      </Chip>
+                    )}
+                    <button
+                      className="btn btn--ghost"
+                      onClick={() => {
+                        setActiveCollection("all");
+                        setQuery("");
+                        setTags([]);
+                        onPrice(null, null);
+                        onOrder("new");
+                        setSlide(1);
                       }}
                     >
-                      <strong>Heads up:</strong> {err}
-                    </div>
-                  )}
+                      Clear all
+                    </button>
+                  </div>
+                )}
 
-                  {/* The grid we're measuring */}
-                 <div ref={gridWrapRef} style={{ width: "100%" }}>
-  <ProductsGrid
-    products={visible}
-    fromSearch={currentSearch}
-    onQuickView={(p) => { setQuickProduct(p); setQuickOpen(true); }}
-    columns={columns}
-    cardMin={CARD_W}
-  />
-</div>
-                  {totalSlides > 1 && (
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 12,
-                        marginTop: 16,
-                      }}
+                {err && (
+                  <div
+                    className="surface"
+                    style={{
+                      padding: 12,
+                      marginBottom: 12,
+                      border: "1px solid var(--c-border-subtle)",
+                    }}
+                  >
+                    <strong>Heads up:</strong> {err}
+                  </div>
+                )}
+
+                {/* The grid we're measuring */}
+                <div ref={gridWrapRef} style={{ width: "100%" }}>
+                  <ProductsGrid
+                    products={visible}
+                    fromSearch={currentSearch}
+                    onQuickView={(p) => {
+                      setQuickProduct(p);
+                      setQuickOpen(true);
+                    }}
+                    columns={columns}
+                    cardMin={CARD_W}
+                  />
+                </div>
+
+                {totalSlides > 1 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                      marginTop: 16,
+                    }}
+                  >
+                    <button
+                      className="btn btn--ghost"
+                      onClick={() => setSlide((n) => Math.max(1, n - 1))}
+                      disabled={slide <= 1}
                     >
-                      <button
-                        className="btn btn--ghost"
-                        onClick={() => setSlide((n) => Math.max(1, n - 1))}
-                        disabled={slide <= 1}
-                      >
-                        ← Prev
-                      </button>
+                      ← Prev
+                    </button>
 
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {Array.from({ length: totalSlides }).map((_, i) => (
-                          <button
-                            key={i}
-                            aria-label={`Go to page ${i + 1}`}
-                            onClick={() => setSlide(i + 1)}
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: 9999,
-                              opacity: i + 1 === slide ? 1 : 0.35,
-                              background: "var(--c-gold, #f4c86a)",
-                              border: "none",
-                            }}
-                          />
-                        ))}
-                      </div>
-
-                      <button
-                        className="btn btn--ghost"
-                        onClick={() =>
-                          setSlide((n) => Math.min(totalSlides, n + 1))
-                        }
-                        disabled={slide >= totalSlides}
-                      >
-                        Next →
-                      </button>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {Array.from({ length: totalSlides }).map((_, i) => (
+                        <button
+                          key={i}
+                          aria-label={`Go to page ${i + 1}`}
+                          onClick={() => setSlide(i + 1)}
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 9999,
+                            opacity: i + 1 === slide ? 1 : 0.35,
+                            background: "var(--c-gold, #f4c86a)",
+                            border: "none",
+                          }}
+                        />
+                      ))}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-          </main>
-        
+
+                    <button
+                      className="btn btn--ghost"
+                      onClick={() =>
+                        setSlide((n) => Math.min(totalSlides, n + 1))
+                      }
+                      disabled={slide >= totalSlides}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </main>
       </div>
     </>
   );

@@ -1503,3 +1503,187 @@ html, body, #root {
 }
 
 /* If you previously had `overflow: hidden` anywhere on html/body, remove it. */
+
+/* =======================================================
+   RESPONSIVE + LAYOUT FIXES
+   ======================================================= */
+
+/* Viewport logic (prevents cutting off content on laptops) */
+:root {
+  --vh: 100dvh; /* dynamic viewport for modern browsers */
+}
+@supports not (height: 100dvh) {
+  :root { --vh: 100vh; } /* fallback */
+}
+
+/* Universal sizing and flow */
+html, body, #root {
+  width: 100%;              /* avoid 100vw overflow */
+  max-width: 100%;
+  overflow-x: hidden;       /* safety guard for wide grids */
+}
+
+/* Prevent containers from causing horizontal scroll */
+.container, .page, main {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Standard grid fix for sidebar + content layouts */
+.page-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 1.5rem;
+}
+.page-grid main {
+  min-width: 0; /* allows shrinking instead of overflowing */
+}
+
+/* Dynamic footer padding (for “Shop Footer”) */
+main {
+  padding-bottom: var(--footer-height, 72px);
+}
+
+/* Fix vh-based sections */
+.full-viewport,
+.hero,
+.section-fullscreen {
+  min-height: var(--vh);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* =======================================================
+   RESPONSIVE BREAKPOINTS
+   ======================================================= */
+
+/* Tablet (≤1024px) */
+@media (max-width: 1024px) {
+  body {
+    font-size: 17px;
+    line-height: 1.65;
+  }
+
+  .page-grid {
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .topnav__links {
+    gap: 12px;
+  }
+
+  .ui-card {
+    border-radius: 10px;
+  }
+}
+
+/* Mobile (≤768px) */
+@media (max-width: 768px) {
+  html, body {
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .page-grid {
+    grid-template-columns: 1fr; /* stack sidebar below content */
+  }
+
+  .topnav__row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .topnav__links {
+    display: none; /* hide desktop nav, use burger menu instead */
+  }
+
+  .footer__grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .products-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  main {
+    padding-bottom: calc(var(--footer-height, 72px) + 24px);
+  }
+}
+
+/* Tiny phones (≤480px) */
+@media (max-width: 480px) {
+  h1 { font-size: 28px; }
+  h2 { font-size: 22px; }
+  h3 { font-size: 18px; }
+
+  .btn, button, .input {
+    font-size: 15px;
+    padding: 10px 12px;
+  }
+
+  .products-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .site-footer {
+    padding-inline: 12px;
+  }
+}
+
+/* ============= LAYOUT WRAPPER ============= */
+/* Use this on pages that have the left rail + main content */
+.page-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr); /* rail + flexible content */
+  gap: 18px;
+  align-items: start;
+}
+.page-grid > :first-child { min-width: 220px; } /* rail never collapses */
+.page-grid > :last-child  { min-width: 0; }     /* main is allowed to shrink */
+
+/* ============= PRODUCTS GRID ============= */
+/* This grid auto-fits the max number of cards that *comfortably* fit.
+   The card min width is clamped so laptops won’t overflow. */
+.products-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(clamp(220px, 24vw, 280px), 1fr));
+}
+
+/* Slightly tighter on “13-inch laptop” widths */
+@media (max-width: 1366px) {
+  .page-grid { grid-template-columns: 260px minmax(0, 1fr); gap: 16px; }
+  .products-grid { grid-template-columns: repeat(auto-fit, minmax(clamp(210px, 26vw, 260px), 1fr)); }
+}
+
+/* Tablet: rail collapses; grid becomes broader cards or 2-up */
+@media (max-width: 1024px) {
+  .page-grid { grid-template-columns: 1fr; }
+  .products-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+}
+
+/* Phone */
+@media (max-width: 768px) {
+  .products-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+}
+
+/* ============= FOOTER SAFETY ============= */
+/* main gets bottom padding equal to the actual footer height */
+main { padding-bottom: calc(var(--footer-height, 72px) + 16px); }
+
+/* If you have a fixed/anchored “Shop Footer” bar, give it a marker class */
+.shop-footer { block-size: auto; } /* the JS below reads its offsetHeight */
+
+
+/* Topnav height token (used by sticky aside on /products) */
+:root { --topnav-h: 64px; }
+
+/* Make room for the smart footer everywhere (useViewportChrome sets --footer-height) */
+body { padding-bottom: var(--footer-height, 0px); }
+
+/* Ensure main content never creates horizontal scroll from wide children */
+main { min-width: 0; overflow-x: clip; }
