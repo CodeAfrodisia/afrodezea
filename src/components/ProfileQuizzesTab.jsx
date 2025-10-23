@@ -8,7 +8,7 @@ import { labelsMap } from "@components/quizzes/labels.js";
 import { remapTotalsKeys as migrateTotals } from "@components/quizzes/normalizeTotals.js";
 import { normalizeTotals as scaleTotals } from "@lib/quizMath.js";
 import { useAuth } from "@context/AuthContext.jsx";
-import ResultModal from "@components/quizzes/ResultModal.jsx"; // <-- NEW
+import ResultModal from "@components/quizzes/ResultModal.jsx"; // modal
 
 /* ────────────────────────────────────────────────────────────────────────────
    Helpers
@@ -95,31 +95,21 @@ function stableKey(label = "", hash = "") {
   return k || null;
 }
 
+/** Title helper to normalize headings (no pairings) */
+function titleForSlug(slug = "") {
+  const s = String(slug).toLowerCase();
+  if (s === "archetype" || s === "archetype-dual" || s === "archetype_dual") return "Archetype";
+  if (s === "archetype-preference" || s === "archetype_preference") return "Archetype Preference";
+  return (labelsMap?.[slug]?.title) ||
+         s.replace(/[-_]/g, " ").replace(/\b\w/g, m => m.toUpperCase());
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    Component
    ──────────────────────────────────────────────────────────────────────────── */
 
 export function ProfileQuizzesTab({ userId, mode = "percent" }) {
   const navigate = useNavigate();
-
-  // 🔧 DEBUG
-  const DEBUG_FORCE_STATIC = false;
-  if (DEBUG_FORCE_STATIC) {
-    const labels = { a: "Navigator", b: "Architect", c: "Warrior", d: "Magician", e: "Nurturer" };
-    const totals = { a: 7, b: 6, c: 8, d: 5, e: 4 };
-    return (
-      <div style={{ padding: 16 }}>
-        <QuizRadarChart
-          title="Static Test (No Fetch, No Paging)"
-          mode="percent"
-          totals={totals}
-          labels={labels}
-          maxValue={10}
-          allowDownload={false}
-        />
-      </div>
-    );
-  }
 
   const { user } = useAuth();
   const resolvedUserId = userId || user?.id || null;
@@ -139,12 +129,10 @@ export function ProfileQuizzesTab({ userId, mode = "percent" }) {
   // Delete state (soul attempts)
   const [deletingId, setDeletingId] = useState(null);
 
-  // NEW: modal state for click-to-open
-  const [modalData, setModalData] = useState(null); // { title, totals, labels, maxValue }
-  const [modalOpen, setModalOpen] = useState(false);
-const [modalPayload, setModalPayload] = useState(null); // { title, totals, labels, maxValue }
-const [modal, setModal] = useState(null); // { slug, attempt }
-const closeModal = () => setModal(null);
+  // Modal state
+  const [modal, setModal] = useState(null); // { slug, attempt }
+  const closeModal = () => setModal(null);
+
 
 
   async function handleDeleteSoulAttempt(id) {
@@ -278,7 +266,6 @@ const closeModal = () => setModal(null);
   }, [soulSort, soulPeopleState]);
 
   /* Cards */
-  const renders = useRef(0); renders.current++;
   const cards = useMemo(() => {
     return (attempts || []).map((a) => {
       const slug = a.quiz_slug;
@@ -358,14 +345,81 @@ const closeModal = () => setModal(null);
     });
   }, [attempts, sortedSoul]);
 
-  /* Pagination */
-  const pageSize = 3;
-  const vectorCards = useMemo(() => cards.filter(c => c.isVector || c.isSoul), [cards]);
+  /* ---- Derived list for charts + soul card ---- */
+const vectorCards = useMemo(
+  () => cards.filter(c => c.isVector || c.isSoul),
+  [cards]
+);
 
-  const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(vectorCards.length / pageSize));
-  const firstIdx = (page - 1) * pageSize;
-  const pageItems = vectorCards.slice(firstIdx, firstIdx + pageSize);
+/* ---- Pagination (persistent + resilient) ---- */
+const pageSize = 3;
+
+// key depends on who is viewing
+const pageKey = useMemo(
+  () => (resolvedUserId ? `profile_quizzes_page:${resolvedUserId}` : "profile_quizzes_page:anon"),
+  [resolvedUserId]
+);
+
+// seed from sessionStorage once
+const [page, setPage] = useState(() => {
+  const n = Number(sessionStorage.getItem(pageKey));
+  return Number.isFinite(n) && n > 0 ? n : 1;
+});
+
+// persist whenever page changes
+useEffect(() => {
+  try { sessionStorage.setItem(pageKey, String(page)); } catch {}
+}, [page, pageKey]);
+
+// compute pages from current cards
+const totalPages = Math.max(1, Math.ceil(vectorCards.length / pageSize));
+
+// Guard against transient empties on visibility change or re-fetch
+const prevLenRef = useRef(vectorCards.length);
+useEffect(() => {
+  const len = vectorCards.length;
+  prevLenRef.current = len;
+  if (len === 0) return; // don't clamp on momentary empties
+
+  const maxPage = Math.max(1, Math.ceil(len / pageSize));
+  if (page > maxPage) setPage(maxPage);
+  // intentionally not depending on `page`
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [vectorCards.length]);
+
+// slice the items for the current page
+const clampedPage = Math.min(page, totalPages);
+const firstIdx = (clampedPage - 1) * pageSize;
+const pageItems = useMemo(
+  () => vectorCards.slice(firstIdx, firstIdx + pageSize),
+  [vectorCards, firstIdx]
+);
+
+
+  // ---- Pagination bits above stay the same ----
+/* const totalPages = Math.max(1, Math.ceil(vectorCards.length / pageSize));
+
+// Guard against transient empties on tab visibility changes
+const prevLenRef = useRef(vectorCards.length);
+ */
+useEffect(() => {
+  const len = vectorCards.length;
+  const prevLen = prevLenRef.current;
+  prevLenRef.current = len;
+
+  // If list is momentarily empty (or smaller) during re-hydration, don't clamp yet.
+  if (len === 0) return;
+
+  const maxPage = Math.max(1, Math.ceil(len / pageSize));
+
+  // Only clamp downward when the new max is truly smaller than before
+  // AND the current page is out of range.
+  if (page > maxPage) {
+    setPage(maxPage);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [vectorCards.length]); // intentionally not depending on `page` to avoid a redundant cycle
+
 
   /* Early returns */
   if (err) {
@@ -395,18 +449,21 @@ const closeModal = () => setModal(null);
             }}
           >
             {pageItems.map(({ attempt, slug, labels, totals, totalsRaw, maxRaw, maxValue, topPair, isArchetypeDual, isSoul, soulPeople }) => {
-              const friendlyTitle =
-                labelsMap?.[slug]?.title ||
-                slug.replace(/[-_]/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+  const friendlyTitle = titleForSlug(slug);
 
-              const weighted = Boolean(
-                totalsRaw && maxRaw &&
-                Object.keys(totalsRaw).length > 0 &&
-                Object.keys(maxRaw).length > 0
-              );
+  // ✅ Keep this — it decides whether to draw weighted radar vs. normalized
+  const weighted = Boolean(
+    totalsRaw && maxRaw &&
+    Object.keys(totalsRaw).length > 0 &&
+    Object.keys(maxRaw).length > 0
+  );
 
-              return (
-                <div key={slug} style={{ display: "grid", gap: 12 }}>
+  // More stable key than just `slug`
+  const uniqueKey =
+    `${slug}:${attempt?.completed_at || attempt?.created_at || attempt?.id || attempt?.result_key || "v1"}`;
+
+  return (
+    <div key={uniqueKey} style={{ display: "grid", gap: 12 }}>
                   {isSoul ? (
                     <div className="surface" style={{ padding: 12 }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -476,10 +533,11 @@ const closeModal = () => setModal(null);
                     <>
                       {/* Small header row with a dedicated "View Details" button */}
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ fontWeight: 700 }}>{friendlyTitle}{topPair ? ` — ${topPair}` : ""}</div>
+                        {/* IMPORTANT: no pairing in the title */}
+                        <div style={{ fontWeight: 700 }}>{friendlyTitle}</div>
                         <button
                           className="btn btn--ghost"
-                          onClick={() => setModalData({ title: friendlyTitle, totals, labels, maxValue })}
+                          onClick={() => setModal({ slug, attempt })}
                           title="Open detailed results"
                         >
                           View Details
@@ -487,18 +545,17 @@ const closeModal = () => setModal(null);
                       </div>
 
                       <QuizRadarChart
-  title={friendlyTitle}
-  mode="percent"
-  totals={weighted ? undefined : totals}
-  totalsRaw={weighted ? totalsRaw : undefined}
-  maxRaw={weighted ? maxRaw : undefined}
-  labels={labels}
-  maxValue={maxValue}
-  height={360}
-  width={360}
-  onOpenModal={() => setModal({ slug, attempt })}
-/>
-
+                        title={friendlyTitle}
+                        mode="percent"
+                        totals={weighted ? undefined : totals}
+                        totalsRaw={weighted ? totalsRaw : undefined}
+                        maxRaw={weighted ? maxRaw : undefined}
+                        labels={labels}
+                        maxValue={maxValue}
+                        height={360}
+                        width={360}
+                        onOpenModal={() => setModal({ slug, attempt })}
+                      />
                     </>
                   )}
 
@@ -520,7 +577,6 @@ const closeModal = () => setModal(null);
               justifyContent: "center",
             }}
           >
-            <div style={{opacity:.6}}>renders: {renders.current}</div>
             <button
               className="btn btn-action"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -566,10 +622,7 @@ const closeModal = () => setModal(null);
                 new Date(a.completed_at || a.created_at)
             )
             .map((a, i) => {
-              const friendlyTitle =
-                (labelsMap?.[a.quiz_slug]?.title) ||
-                a.quiz_slug.replace(/[-_]/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
-
+              const friendlyTitle = titleForSlug(a.quiz_slug);
               return (
                 <div key={`${a.quiz_slug}-${i}`} className="result-card-gold">
                   <ResultCard attempt={a} quizTitle={friendlyTitle} />
@@ -580,18 +633,15 @@ const closeModal = () => setModal(null);
       )}
 
       {/* SHARED RESULT MODAL */}
-    {modal && (
-  <ResultModal
-    open={!!modal}
-    onClose={closeModal}
-    slug={modal.slug}
-    attempt={modal.attempt}
-    userId={resolvedUserId}
-/>
-)}
-    
-
-
+      {modal && (
+        <ResultModal
+          open={!!modal}
+          onClose={closeModal}
+          slug={modal.slug}
+          attempt={modal.attempt}
+          userId={resolvedUserId}
+        />
+      )}
     </div>
   );
 }

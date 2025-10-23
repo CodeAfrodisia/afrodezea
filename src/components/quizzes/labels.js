@@ -119,4 +119,6 @@ export const labelsMap = {
   // Archetype Preference
   "archetype-preference":     { title: "Archetype Preference", ...archetypePreferenceLabels },
   "archetype_preference":     { title: "Archetype Preference", ...archetypePreferenceLabels },
+  "archetype-dual": { title: "Archetype" },
+  "archetype_dual": { title: "Archetype" },
 };

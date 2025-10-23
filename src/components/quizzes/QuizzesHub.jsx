@@ -31,7 +31,8 @@ export default function QuizzesHub() {
       setLoading(true);
       const { data, error } = await supabase
         .from("quizzes")
-        .select("id, slug, title, category, description")
+        .select("id, slug, title, is_published, category, description")
+        .eq("is_published", true)
         .order("category", { ascending: true })
         .order("title", { ascending: true });
 

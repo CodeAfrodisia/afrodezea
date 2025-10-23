@@ -589,7 +589,11 @@ function stripTags(s = "") {
 
 function htmlToSections(html) {
   if (!html || typeof html !== "string") return [];
-  const normalized = html.replace(/\s+</g, "<").replace(/>\s+/g, ">");
+  // ✅ trim only whitespace between tags, not between a tag and text
+const normalized = html
+  .replace(/\s+</g, "<")             // trim space before tags
+  .replace(/>\s+(?=<)/g, ">");       // trim only when the *next* char is a "<"
+
   const parts = normalized
     .split(/(?=<h[2-4][^>]*>)/i)
     .map(s => s.trim())
