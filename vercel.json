@@ -15,11 +15,6 @@
     }
   ],
   "rewrites": [
-    { "source": "/product/:handle", "destination": "/index.html" },
-    { "source": "/profile/:slug",  "destination": "/index.html" },
-    { "source": "/wishlist",       "destination": "/index.html" },
-    { "source": "/admin",          "destination": "/index.html" },
-    { "source": "/products",       "destination": "/index.html" },
-    { "source": "/(.*)",           "destination": "/index.html" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
