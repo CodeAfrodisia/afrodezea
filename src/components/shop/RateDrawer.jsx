@@ -255,9 +255,10 @@ export default function RateDrawer({
         </div>
 
         <div style={{ padding: 16, display: "grid", gap: 14 }}>
-          {loadingExisting && (
-            <div style={{ opacity: 0.8 }}>Loading your previous rating…</div>
-          )}
+          {loadingExisting && <div style={{ opacity: 0.8 }}>Loading your previous rating…</div>}
+ {err && !loadingExisting && (
+   <div style={{ color: "#ffb3b3" }}>{err}</div>
+ )}
 
           <div style={{ display: "grid", gap: 10 }}>
             {FIELDS.map((k, i) => (
