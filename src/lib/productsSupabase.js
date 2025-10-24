@@ -1,5 +1,7 @@
 // src/lib/productsSupabase.js
-import supabase from "./supabaseClient.js";
+// src/lib/productsSupabase.js
+import supabase, { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabaseClient.js";
+
 
 /* ---------------- utils ---------------- */
 const centsToAmount = (c) => (c ?? 0) / 100;
@@ -180,43 +182,71 @@ function restHeaders() {
 }
 
 export async function fetchProductBySlugREST(slug) {
-  const url = `${REST_BASE}/products?select=*&slug=eq.${encodeURIComponent(slug)}&limit=1`;
-  const res = await fetch(url, { headers: restHeaders() });
-  if (!res.ok) throw new Error(`REST ${res.status}`);
-  const json = await res.json();
-  return json?.[0] ? mapRow(json[0]) : null;
-}
+  const qs = new URLSearchParams({
+    select:
+      "id,slug,handle,title,description,price_cents,image_url,collection,tags,created_at,variants,options",
+    slug: `eq.${String(slug || "").toLowerCase()}`,
+    limit: "1",
+  });
 
-/* (export name retained for callers that still import it) */
-export async function fetchProductByHandleFromSupabase(handle) {
-  const slug = String(handle || "").toLowerCase();
-  const url =
-    `${SUPABASE_URL}/rest/v1/products` +
-    `?select=*` +
-    `&slug=eq.${encodeURIComponent(slug)}` +
-    `&limit=1`;
+  const url = `${SUPABASE_URL}/rest/v1/products?${qs.toString()}`;
 
-  const res = await withTimeout(
-    fetch(url, {
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        Accept: "application/json",
-        Prefer: "count=exact",
-      },
-    }),
-    10000,
-    "product.bySlug.rest"
-  );
+  const res = await fetch(url, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      accept: "application/json",
+      // Authorization is optional with anon key, but harmless:
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+  });
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`REST ${res.status}: ${body || "failed"}`);
+    throw new Error(`REST ${res.status}: ${body || res.statusText}`);
   }
 
   const arr = await res.json();
   return arr?.[0] ? mapRow(arr[0]) : null;
 }
+
+/* keep this export name for existing callers */
+export async function fetchProductByHandleFromSupabase(handle) {
+  const slug = String(handle || "").toLowerCase();
+
+  // Try by slug first (current schema)
+  try {
+    return await fetchProductBySlugREST(slug);
+  } catch (e) {
+    console.warn("[product.bySlug] failed (falling back to handle):", e);
+  }
+
+  // Fallback: some old rows may still use a separate `handle` column
+  const qs = new URLSearchParams({
+    select:
+      "id,slug,handle,title,description,price_cents,image_url,collection,tags,created_at,variants,options",
+    handle: `eq.${slug}`,
+    limit: "1",
+  });
+
+  const url = `${SUPABASE_URL}/rest/v1/products?${qs.toString()}`;
+
+  const res = await fetch(url, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      accept: "application/json",
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`REST ${res.status}: ${body || res.statusText}`);
+  }
+
+  const arr = await res.json();
+  return arr?.[0] ? mapRow(arr[0]) : null;
+}
+
 
 
 export async function fetchProductsREST({ limit = 36, offset = 0 } = {}) {
