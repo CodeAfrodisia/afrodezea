@@ -190,26 +190,32 @@ export async function fetchProductBySlugREST(slug) {
 /* (export name retained for callers that still import it) */
 export async function fetchProductByHandleFromSupabase(handle) {
   const slug = String(handle || "").toLowerCase();
+  const url =
+    `${SUPABASE_URL}/rest/v1/products` +
+    `?select=*` +
+    `&slug=eq.${encodeURIComponent(slug)}` +
+    `&limit=1`;
 
-  // Primary: Supabase client (10s deadline)
-  try {
-    const { data, error } = await withTimeout(
-      supabase
-        .from("products")
-        .select("*")
-        .eq("slug", slug)
-        .maybeSingle(),
-      10000,
-      "product.bySlug"
-    );
-    if (error) throw error;
-    return data ? mapRow(data) : null;
-  } catch (e) {
-    console.warn("[product.bySlug] failed:", e);
+  const res = await withTimeout(
+    fetch(url, {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        Accept: "application/json",
+        Prefer: "count=exact",
+      },
+    }),
+    10000,
+    "product.bySlug.rest"
+  );
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`REST ${res.status}: ${body || "failed"}`);
   }
 
-  // As a last resort, return null — the caller will show “Not found.”
-  return null;
+  const arr = await res.json();
+  return arr?.[0] ? mapRow(arr[0]) : null;
 }
 
 
