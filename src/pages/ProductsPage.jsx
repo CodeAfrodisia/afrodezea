@@ -21,10 +21,6 @@ const QuickViewModal = React.lazy(() =>
   import("../components/shop/QuickViewModal.jsx")
 );
 
-/* const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY; */
-
-
 // ---- tiny utils used by mapping ----
 const centsToAmount = (c) => (c ?? 0) / 100;
 const slugify = (s) =>
@@ -42,81 +38,6 @@ const parseMaybeJson = (v) => {
   }
   return null;
 };
-
-/* function mapRow(row) {
-  const variantsRaw = parseMaybeJson(row.variants) ?? [];
-  const optionsRaw = parseMaybeJson(row.options) ?? [];
-  const variants = Array.isArray(variantsRaw) ? variantsRaw : [];
-  const options = Array.isArray(optionsRaw) ? optionsRaw : [];
-
-  const variantPrices = variants
-    .map((v) => v.price_cents)
-    .filter((n) => n != null);
-  const basePrices = variantPrices.length
-    ? variantPrices
-    : [row.price_cents ?? 0];
-  const min = Math.min(...basePrices);
-  const max = Math.max(...basePrices);
-
-  return {
-    id: row.id,
-    title: row.title,
-    handle: row.slug ?? row.handle ?? null,
-    description: row.description || "",
-    collection: row.collection || "",
-    images: { nodes: row.image_url ? [{ url: row.image_url }] : [] },
-    priceRange: {
-      minVariantPrice: { amount: centsToAmount(min), currencyCode: "USD" },
-      maxVariantPrice: { amount: centsToAmount(max), currencyCode: "USD" },
-    },
-    variants: {
-      nodes: (variants || []).map((v) => {
-        const selectedOptions =
-          Array.isArray(v.selectedOptions) && v.selectedOptions.length
-            ? v.selectedOptions
-            : [
-                v.wax ? { name: "Wax", value: String(v.wax) } : null,
-                v.size ? { name: "Size", value: String(v.size) } : null,
-              ].filter(Boolean);
-
-        const vid =
-          v.id ??
-          v.sku ??
-          `${row.id}:${slugify(
-            v.title ||
-              [v.wax, v.size].filter(Boolean).join(" / ") ||
-              "default"
-          )}`;
-
-        return {
-          id: vid,
-          title:
-            v.title ??
-            (selectedOptions.length
-              ? selectedOptions.map((o) => o.value).join(" / ")
-              : "Default"),
-          availableForSale:
-            v.availableForSale != null ? !!v.availableForSale : true,
-          price: {
-            amount:
-              v.price_cents != null ? centsToAmount(v.price_cents) : null,
-            currencyCode: "USD",
-          },
-          selectedOptions,
-        };
-      }),
-    },
-    options,
-    collections: {
-      nodes: row.collection
-        ? [{ title: row.collection, handle: String(row.collection).toLowerCase() }]
-        : [],
-    },
-    tags: Array.isArray(row.tags) ? row.tags : [],
-    image_url: row.image_url || null,
-    price_cents: row.price_cents ?? null,
-  };
-} */
 
 // ===== collections used by tabs =====
 const COLLECTIONS = [
@@ -143,7 +64,7 @@ const SUPABASE_URL =
 
 const SUPABASE_ANON =
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  // Fallback lets local dev work; safe because anon keys are public by design
+  // Fallback lets local dev work; anon keys are public by design
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlcG1ldW10aWV1eXFkdGRzdXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk0OTc4ODgsImV4cCI6MjA2NTA3Mzg4OH0.2__GntZeNhcqQrs9XrWKY20CK5zjISVYvm0tQ3SBhG0";
 
 function esc(v) {
@@ -153,40 +74,33 @@ function esc(v) {
 function buildQuery({ q, collection, tags, minPriceCents, maxPriceCents, order, from, to }) {
   const params = new URLSearchParams();
 
-  // Single, final select only once
   params.set(
     "select",
     "id,slug,handle:slug,title,price_cents,image_url,collection,tags,created_at,variants,options"
   );
 
-  // Search across title/description (only when q is non-empty)
   if (q && q.trim()) {
-    const needle = `*${q.trim().replace(/\s+/g, "*")}*`; // PostgREST wildcards
+    const needle = `*${q.trim().replace(/\s+/g, "*")}*`;
     params.set("or", `(title.ilike.${needle},description.ilike.${needle})`);
   }
 
-  // Collection (map keys → labels)
   if (collection && collection !== "all") {
     const LABEL = { affirmation:"Affirmation", afrodisia:"Afrodisia", pantheon:"Pantheon", fall:"Fall", winter:"Winter" };
     const label = LABEL[collection] ?? collection;
     params.set("collection", `eq.${label}`);
   }
 
-  // Tags (array overlap)
   if (Array.isArray(tags) && tags.length) {
     params.set("tags", `ov.{${tags.map((t)=>t.toLowerCase()).join(",")}}`);
   }
 
-  // Price range
   if (typeof minPriceCents === "number") params.set("price_cents", `gte.${minPriceCents}`);
   if (typeof maxPriceCents === "number") params.set("price_cents", `lte.${maxPriceCents}`);
 
-  // Order
   if (order === "price_asc")       params.set("order", "price_cents.asc.nullslast");
   else if (order === "price_desc") params.set("order", "price_cents.desc.nullslast");
   else                             params.set("order", "created_at.desc.nullslast");
 
-  // Page window — ensure they are concrete numbers
   const limit  = Math.max(1, (to - from + 1) | 0);
   const offset = Math.max(0, from | 0);
   params.set("limit", String(limit));
@@ -194,9 +108,6 @@ function buildQuery({ q, collection, tags, minPriceCents, maxPriceCents, order, 
 
   return params.toString();
 }
-
-
-
 
 async function fetchProductsREST(args, deadlineMs = 20000) {
   const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
@@ -221,7 +132,7 @@ async function fetchProductsREST(args, deadlineMs = 20000) {
 
   try {
     console.time("[products] rest");
-    console.log("[products] rest url", url); // 👈 will show the full URL in the console
+    console.log("[products] rest url", url);
     const res  = await fetch(url, { headers, signal: ctrl.signal });
 
     const raw  = await res.text();
@@ -237,7 +148,7 @@ async function fetchProductsREST(args, deadlineMs = 20000) {
     }
 
     const arr = Array.isArray(body) ? body : [];
-    const range = res.headers.get("content-range"); // e.g. "0-35/123"
+    const range = res.headers.get("content-range");
     const total = range ? Number(range.split("/")[1]) : arr.length;
 
     return { rows: arr.map(mapRow), total };
@@ -246,9 +157,6 @@ async function fetchProductsREST(args, deadlineMs = 20000) {
     console.timeEnd("[products] rest");
   }
 }
-
-
-
 
 // small pill button
 function Chip({ children, onClick }) {
@@ -316,7 +224,6 @@ export default function ProductsPage() {
     let alive = true;
     (async () => {
       try {
-        // direct REST for tags as well (keeps the same reliable path)
         const url = `${SUPABASE_URL}/rest/v1/products_tags_catalog?select=tag&order=tag.asc`;
         const res = await fetch(url, {
           headers: {
@@ -513,9 +420,6 @@ export default function ProductsPage() {
   const start = (slide - 1) * perSlide;
   const visible = (rows || []).slice(start, start + perSlide);
 
-  // For sticky aside: read the nav height from CSS var (fallback 64px)
-  const TOPNAV = "var(--topnav-h, 64px)";
-
   return (
     <>
       <Helmet>
@@ -553,284 +457,293 @@ export default function ProductsPage() {
         />
       </Suspense>
 
-      {/* PAGE FRAME */}
+      {/* ───────────────────────── PAGE LAYOUT (dual scroll) ───────────────────────── */}
       <div
-        ref={frameRef}
-        className="container"
         style={{
-          padding: 24,
-          paddingBottom: "calc(var(--footer-height, 0px) + 16px)",
-          display: "grid",
-          gap: 24,
-          gridTemplateColumns: isNarrow ? "1fr" : "280px 1fr",
-          gridTemplateAreas: isNarrow
-            ? `"header" "aside" "main"`
-            : `"header header" "aside main"`,
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          // leave footer space if your layout uses a fixed footer height var
+          paddingBottom: "var(--footer-height, 0px)",
         }}
       >
-        {/* Header */}
-        <div style={{ gridArea: "header", opacity: 0.85 }}>
-          {loading ? "Loading…" : `${total} result${total === 1 ? "" : "s"}`}
-          {query ? ` for “${query}”` : ""}
-          {activeCollection !== "all" ? ` in ${activeCollection}` : ""}
-        </div>
-
-        {/* Sidebar */}
-        <aside
+        <div
+          ref={frameRef}
           style={{
-            gridArea: "aside",
-            position: isNarrow ? "static" : "sticky",
-            top: isNarrow ? undefined : `calc(${TOPNAV} + 16px)`,
-            alignSelf: "start",
-            maxHeight: isNarrow ? "none" : "calc(var(--vh) - 16px - 16px - 1px)",
-            overflow: isNarrow ? "visible" : "auto",
-          }}
-        >
-          <div className="surface" style={{ padding: 12 }}>
-            <CollectionTabs
-              tabs={COLLECTIONS}
-              active={activeCollection}
-              onChange={(key) => {
-                setActiveCollection(key);
-                setSlide(1);
-              }}
-            />
-          </div>
-          <div style={{ height: 12 }} />
-          <div className="surface" style={{ padding: 12 }}>
-            <Filters
-              query={query}
-              onQueryChange={(val) => {
-                setQuery(val);
-                setSlide(1);
-              }}
-              selectedTags={tags}
-              onToggleTag={(t) => {
-                onToggleTag(t);
-              }}
-              tagsCatalog={tagCatalog}
-              // Filters UI takes dollars; convert to cents for state
-              minPrice={min != null ? Math.round(min / 100) : null}
-              maxPrice={max != null ? Math.round(max / 100) : null}
-              onPriceChange={(minDollars, maxDollars) => {
-                const mMin =
-                  minDollars == null ? null : Math.round(Number(minDollars) * 100);
-                const mMax =
-                  maxDollars == null ? null : Math.round(Number(maxDollars) * 100);
-                onPrice(mMin, mMax);
-              }}
-              order={order}
-              onOrderChange={(v) => {
-                onOrder(v);
-              }}
-            />
-          </div>
-        </aside>
-
-        {/* Main */}
-        <main
-          style={{
-            gridArea: "main",
+            flex: "1 1 auto",
+            minHeight: 0, // critical for child overflows to work
             display: "flex",
-            flexDirection: "column",
-            minWidth: 0, // prevents accidental overflow
+            flexDirection: isNarrow ? "column" : "row",
+            gap: 24,
+            padding: 24,
+            overflow: "hidden", // contain child scrolls
           }}
         >
-          <div style={{ position: "relative", flex: "1 1 auto" }}>
-            {loading ? (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-                  gap: 20,
+          {/* Sidebar (scrolls independently) */}
+          <aside
+            style={{
+              flex: isNarrow ? "0 0 auto" : "0 0 280px",
+              width: isNarrow ? "auto" : 280,
+              overflowY: "auto",
+              maxHeight: "100%",
+            }}
+          >
+            <div className="surface" style={{ padding: 12 }}>
+              <CollectionTabs
+                tabs={COLLECTIONS}
+                active={activeCollection}
+                onChange={(key) => {
+                  setActiveCollection(key);
+                  setSlide(1);
                 }}
-              >
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      height: 320,
-                      borderRadius: 16,
-                      background:
-                        "linear-gradient(90deg,#151515,#1a1a1a,#151515)",
-                      animation: "shimmer 1.2s linear infinite",
-                      backgroundSize: "300% 100%",
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <>
-                {(tags.length ||
-                  min != null ||
-                  max != null ||
-                  order !== "new" ||
-                  query ||
-                  activeCollection !== "all") && (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      flexWrap: "wrap",
-                      marginBottom: 12,
-                    }}
-                  >
-                    {activeCollection !== "all" && (
-                      <Chip
+              />
+            </div>
+            <div style={{ height: 12 }} />
+            <div className="surface" style={{ padding: 12 }}>
+              <Filters
+                query={query}
+                onQueryChange={(val) => {
+                  setQuery(val);
+                  setSlide(1);
+                }}
+                selectedTags={tags}
+                onToggleTag={(t) => {
+                  onToggleTag(t);
+                }}
+                tagsCatalog={tagCatalog}
+                // Filters UI takes dollars; convert to cents for state
+                minPrice={min != null ? Math.round(min / 100) : null}
+                maxPrice={max != null ? Math.round(max / 100) : null}
+                onPriceChange={(minDollars, maxDollars) => {
+                  const mMin =
+                    minDollars == null ? null : Math.round(Number(minDollars) * 100);
+                  const mMax =
+                    maxDollars == null ? null : Math.round(Number(maxDollars) * 100);
+                  onPrice(mMin, mMax);
+                }}
+                order={order}
+                onOrderChange={(v) => {
+                  onOrder(v);
+                }}
+              />
+            </div>
+          </aside>
+
+          {/* Main (scrolls independently) */}
+          <main
+            style={{
+              flex: "1 1 auto",
+              minWidth: 0,
+              minHeight: 0,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Header / result count */}
+            <div style={{ opacity: 0.85, marginBottom: 8 }}>
+              {loading ? "Loading…" : `${total} result${total === 1 ? "" : "s"}`}
+              {query ? ` for “${query}”` : ""}
+              {activeCollection !== "all" ? ` in ${activeCollection}` : ""}
+            </div>
+
+            <div style={{ position: "relative", flex: "1 1 auto" }}>
+              {loading ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                    gap: 20,
+                  }}
+                >
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        height: 320,
+                        borderRadius: 16,
+                        background:
+                          "linear-gradient(90deg,#151515,#1a1a1a,#151515)",
+                        animation: "shimmer 1.2s linear infinite",
+                        backgroundSize: "300% 100%",
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <>
+                  {(tags.length ||
+                    min != null ||
+                    max != null ||
+                    order !== "new" ||
+                    query ||
+                    activeCollection !== "all") && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        marginBottom: 12,
+                      }}
+                    >
+                      {activeCollection !== "all" && (
+                        <Chip
+                          onClick={() => {
+                            setActiveCollection("all");
+                            setSlide(1);
+                          }}
+                        >
+                          Collection: {activeCollection} ×
+                        </Chip>
+                      )}
+                      {query && (
+                        <Chip
+                          onClick={() => {
+                            setQuery("");
+                            setSlide(1);
+                          }}
+                        >
+                          Search: “{query}” ×
+                        </Chip>
+                      )}
+                      {tags.map((t) => (
+                        <Chip
+                          key={t}
+                          onClick={() => {
+                            onToggleTag(t);
+                            setSlide(1);
+                          }}
+                        >
+                          {t} ×
+                        </Chip>
+                      ))}
+                      {min != null && (
+                        <Chip
+                          onClick={() => {
+                            onPrice(null, max);
+                            setSlide(1);
+                          }}
+                        >
+                          Min ${Math.round(min / 100)} ×
+                        </Chip>
+                      )}
+                      {max != null && (
+                        <Chip
+                          onClick={() => {
+                            onPrice(min, null);
+                            setSlide(1);
+                          }}
+                        >
+                          Max ${Math.round(max / 100)} ×
+                        </Chip>
+                      )}
+                      {order !== "new" && (
+                        <Chip
+                          onClick={() => {
+                            onOrder("new");
+                            setSlide(1);
+                          }}
+                        >
+                          Sort {order.replace("_", " ")} ×
+                        </Chip>
+                      )}
+                      <button
+                        className="btn btn--ghost"
                         onClick={() => {
                           setActiveCollection("all");
-                          setSlide(1);
-                        }}
-                      >
-                        Collection: {activeCollection} ×
-                      </Chip>
-                    )}
-                    {query && (
-                      <Chip
-                        onClick={() => {
                           setQuery("");
-                          setSlide(1);
-                        }}
-                      >
-                        Search: “{query}” ×
-                      </Chip>
-                    )}
-                    {tags.map((t) => (
-                      <Chip
-                        key={t}
-                        onClick={() => {
-                          onToggleTag(t);
-                          setSlide(1);
-                        }}
-                      >
-                        {t} ×
-                      </Chip>
-                    ))}
-                    {min != null && (
-                      <Chip
-                        onClick={() => {
-                          onPrice(null, max);
-                          setSlide(1);
-                        }}
-                      >
-                        Min ${Math.round(min / 100)} ×
-                      </Chip>
-                    )}
-                    {max != null && (
-                      <Chip
-                        onClick={() => {
-                          onPrice(min, null);
-                          setSlide(1);
-                        }}
-                      >
-                        Max ${Math.round(max / 100)} ×
-                      </Chip>
-                    )}
-                    {order !== "new" && (
-                      <Chip
-                        onClick={() => {
+                          setTags([]);
+                          onPrice(null, null);
                           onOrder("new");
                           setSlide(1);
                         }}
                       >
-                        Sort {order.replace("_", " ")} ×
-                      </Chip>
-                    )}
-                    <button
-                      className="btn btn--ghost"
-                      onClick={() => {
-                        setActiveCollection("all");
-                        setQuery("");
-                        setTags([]);
-                        onPrice(null, null);
-                        onOrder("new");
-                        setSlide(1);
+                        Clear all
+                      </button>
+                    </div>
+                  )}
+
+                  {err && (
+                    <div
+                      className="surface"
+                      style={{
+                        padding: 12,
+                        marginBottom: 12,
+                        border: "1px solid var(--c-border-subtle)",
                       }}
                     >
-                      Clear all
-                    </button>
-                  </div>
-                )}
-
-                {err && (
-                  <div
-                    className="surface"
-                    style={{
-                      padding: 12,
-                      marginBottom: 12,
-                      border: "1px solid var(--c-border-subtle)",
-                    }}
-                  >
-                    <strong>Heads up:</strong> {err}
-                  </div>
-                )}
-
-                {/* The grid we're measuring */}
-                <div ref={gridWrapRef} style={{ width: "100%" }}>
-                  <ProductsGrid
-                    products={visible}
-                    fromSearch={currentSearch}
-                    onQuickView={(p) => {
-                      setQuickProduct(p);
-                      setQuickOpen(true);
-                    }}
-                    columns={columns}
-                    cardMin={CARD_W}
-                  />
-                </div>
-
-                {totalSlides > 1 && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 12,
-                      marginTop: 16,
-                    }}
-                  >
-                    <button
-                      className="btn btn--ghost"
-                      onClick={() => setSlide((n) => Math.max(1, n - 1))}
-                      disabled={slide <= 1}
-                    >
-                      ← Prev
-                    </button>
-
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {Array.from({ length: totalSlides }).map((_, i) => (
-                        <button
-                          key={i}
-                          aria-label={`Go to page ${i + 1}`}
-                          onClick={() => setSlide(i + 1)}
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 9999,
-                            opacity: i + 1 === slide ? 1 : 0.35,
-                            background: "var(--c-gold, #f4c86a)",
-                            border: "none",
-                          }}
-                        />
-                      ))}
+                      <strong>Heads up:</strong> {err}
                     </div>
+                  )}
 
-                    <button
-                      className="btn btn--ghost"
-                      onClick={() =>
-                        setSlide((n) => Math.min(totalSlides, n + 1))
-                      }
-                      disabled={slide >= totalSlides}
-                    >
-                      Next →
-                    </button>
+                  {/* The grid we're measuring */}
+                  <div ref={gridWrapRef} style={{ width: "100%" }}>
+                    <ProductsGrid
+                      products={visible}
+                      fromSearch={currentSearch}
+                      onQuickView={(p) => {
+                        setQuickProduct(p);
+                        setQuickOpen(true);
+                      }}
+                      columns={columns}
+                      cardMin={CARD_W}
+                    />
                   </div>
-                )}
-              </>
-            )}
-          </div>
-        </main>
+
+                  {totalSlides > 1 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 12,
+                        marginTop: 16,
+                      }}
+                    >
+                      <button
+                        className="btn btn--ghost"
+                        onClick={() => setSlide((n) => Math.max(1, n - 1))}
+                        disabled={slide <= 1}
+                      >
+                        ← Prev
+                      </button>
+
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {Array.from({ length: totalSlides }).map((_, i) => (
+                          <button
+                            key={i}
+                            aria-label={`Go to page ${i + 1}`}
+                            onClick={() => setSlide(i + 1)}
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: 9999,
+                              opacity: i + 1 === slide ? 1 : 0.35,
+                              background: "var(--c-gold, #f4c86a)",
+                              border: "none",
+                            }}
+                          />
+                        ))}
+                      </div>
+
+                      <button
+                        className="btn btn--ghost"
+                        onClick={() =>
+                          setSlide((n) => Math.min(totalSlides, n + 1))
+                        }
+                        disabled={slide >= totalSlides}
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </main>
+        </div>
       </div>
+      {/* ───────────────────────────────────────────────────────────────────────────── */}
     </>
   );
 }
