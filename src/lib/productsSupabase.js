@@ -181,10 +181,11 @@ function restHeaders() {
   };
 }
 
+/** REST helper: fetch by slug (the only canonical key) */
 export async function fetchProductBySlugREST(slug) {
   const qs = new URLSearchParams({
     select:
-      "id,slug,handle,title,description,price_cents,image_url,collection,tags,created_at,variants,options",
+      "id,slug,title,description,price_cents,image_url,collection,tags,created_at,variants,options",
     slug: `eq.${String(slug || "").toLowerCase()}`,
     limit: "1",
   });
@@ -195,8 +196,7 @@ export async function fetchProductBySlugREST(slug) {
     headers: {
       apikey: SUPABASE_ANON_KEY,
       accept: "application/json",
-      // Authorization is optional with anon key, but harmless:
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`, // harmless, sometimes helps with proxies
     },
   });
 
@@ -209,42 +209,10 @@ export async function fetchProductBySlugREST(slug) {
   return arr?.[0] ? mapRow(arr[0]) : null;
 }
 
-/* keep this export name for existing callers */
+/** Keep the old export name, but route to slug-only */
 export async function fetchProductByHandleFromSupabase(handle) {
   const slug = String(handle || "").toLowerCase();
-
-  // Try by slug first (current schema)
-  try {
-    return await fetchProductBySlugREST(slug);
-  } catch (e) {
-    console.warn("[product.bySlug] failed (falling back to handle):", e);
-  }
-
-  // Fallback: some old rows may still use a separate `handle` column
-  const qs = new URLSearchParams({
-    select:
-      "id,slug,handle,title,description,price_cents,image_url,collection,tags,created_at,variants,options",
-    handle: `eq.${slug}`,
-    limit: "1",
-  });
-
-  const url = `${SUPABASE_URL}/rest/v1/products?${qs.toString()}`;
-
-  const res = await fetch(url, {
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      accept: "application/json",
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`REST ${res.status}: ${body || res.statusText}`);
-  }
-
-  const arr = await res.json();
-  return arr?.[0] ? mapRow(arr[0]) : null;
+  return fetchProductBySlugREST(slug);
 }
 
 
