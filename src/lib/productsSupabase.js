@@ -188,18 +188,30 @@ export async function fetchProductBySlugREST(slug) {
 }
 
 /* (export name retained for callers that still import it) */
-export async function fetchProductByHandleFromSupabase(handleLike) {
-  // Treat incoming “handle” as slug first; then legacy handle
-  const asSlug = await fetchProductBySlugFromSupabase(handleLike);
-  if (asSlug) return asSlug;
+export async function fetchProductByHandleFromSupabase(handle) {
+  const slug = String(handle || "").toLowerCase();
 
-  // Legacy fallback
-  const asLegacy = await fetchProductByLegacyHandle(handleLike);
-  if (asLegacy) return asLegacy;
+  // Primary: Supabase client (10s deadline)
+  try {
+    const { data, error } = await withTimeout(
+      supabase
+        .from("products")
+        .select("*")
+        .eq("slug", slug)
+        .maybeSingle(),
+      10000,
+      "product.bySlug"
+    );
+    if (error) throw error;
+    return data ? mapRow(data) : null;
+  } catch (e) {
+    console.warn("[product.bySlug] failed:", e);
+  }
 
-  // REST fallback (in case RLS or client SDK trips)
-  return await fetchProductBySlugREST(handleLike);
+  // As a last resort, return null — the caller will show “Not found.”
+  return null;
 }
+
 
 export async function fetchProductsREST({ limit = 36, offset = 0 } = {}) {
   const url = new URL(`${REST_BASE}/products`);

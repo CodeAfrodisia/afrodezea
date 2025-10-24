@@ -71,11 +71,12 @@ export default function ProductDetail() {
   /* -------------------- Effects -------------------- */
 
   // Load product by handle / slug
-  useEffect(() => {
+ useEffect(() => {
   let alive = true;
   (async () => {
     setLoading(true);
     try {
+      console.time("[product] load");
       const data = await fetchProductByHandleFromSupabase(handle);
       if (!alive) return;
       setProd(data ?? null);
@@ -84,11 +85,13 @@ export default function ProductDetail() {
       if (!alive) return;
       setProd(null);
     } finally {
+      console.timeEnd("[product] load");
       if (alive) setLoading(false);
     }
   })();
   return () => { alive = false; };
 }, [handle]);
+
 
 
   // Load verified summary + recent verified whenever product changes
