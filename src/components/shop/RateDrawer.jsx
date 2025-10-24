@@ -80,10 +80,7 @@ export default function RateDrawer({
 
     (async () => {
       try {
-        const r =
-          (await fetchMyRating(product.id)) ||
-          existingRating ||
-          null;
+        const r = (await fetchMyRating(product.id, userId)) || existingRating || null;
 
         if (!active) return;
         setExisting(r);
