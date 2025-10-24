@@ -476,7 +476,7 @@ export default function ProductsPage() {
             flexDirection: isNarrow ? "column" : "row",
             gap: 24,
             padding: 24,
-            overflow: "hidden", // contain child scrolls
+            overflow: "visible"
           }}
         >
           {/* Sidebar (scrolls independently) */}
