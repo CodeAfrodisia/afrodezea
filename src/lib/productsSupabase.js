@@ -133,11 +133,11 @@ export const fetchProductsSupabase = (args) => fetchProductsFromSupabase(args);
 
 /* ---------- single by handle (kept for ProductDetail) ---------- */
 export async function fetchProductByHandleFromSupabase(handle) {
-  // Try slug first (new schema)
-  let { data, error } = await supabase
+   // treat "handle" as our slug
+  const { data, error } = await supabase
     .from("products")
-    .select("id, slug, handle, title, description, price_cents, image_url, collection, tags, created_at, variants, options")
-    .eq("slug", handle)
+    .select("*")
+    .eq("slug", h)
     .maybeSingle();
 
   // Fallback to legacy "handle" column if slug didn’t hit
