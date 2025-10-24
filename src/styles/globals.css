@@ -1520,14 +1520,14 @@ html, body, #root {
 html, body, #root {
   width: 100%;              /* avoid 100vw overflow */
   max-width: 100%;
-  overflow-x: hidden;       /* safety guard for wide grids */
+  overflow-x: visible;       /* safety guard for wide grids */
 }
 
 /* Prevent containers from causing horizontal scroll */
 .container, .page, main {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: visible;
 }
 
 /* Standard grid fix for sidebar + content layouts */
