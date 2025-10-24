@@ -2,116 +2,155 @@
 import { supabase } from "@lib/supabaseClient.js";
 
 export const RATINGS_TABLE = "product_ratings";
-// Members-only: one rating per (product_id, user_id)
+// One rating per (product_id, user_id)
 const UPSERT_CONFLICT = "product_id,user_id";
 
+/* ---------- utils ---------- */
+function clamp05(n) {
+  const x = Number(n ?? 0);
+  if (Number.isNaN(x)) return 0;
+  return Math.max(0, Math.min(5, x));
+}
+
+function withDeadline(promise, ms = 12000, label = "op") {
+  let t;
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => (t = setTimeout(() => rej(new Error(`[timeout] ${label} > ${ms}ms`)), ms))),
+  ]).finally(() => clearTimeout(t));
+}
+
+function explain(error) {
+  if (!error) return "Unknown error";
+  // Supabase/PostgREST common messages
+  if (error.code === "42501") return 'Permission denied (RLS). Check policies for inserts/updates on "product_ratings".';
+  if (error.message) return error.message;
+  return String(error);
+}
+
+/* ---------- write APIs ---------- */
 /**
  * Create or update the current user's rating for a product.
- * Pass numeric fields (0..5). Backend enforces RLS with auth.uid().
+ * Backend must have RLS policies allowing:
+ *  - INSERT: auth.uid() = user_id
+ *  - UPDATE: auth.uid() = user_id
  */
 export async function submitRating(payload) {
-  // Accept only fields we store (no email/token in members-only mode)
   const {
-    id,           // optional: force update-by-id
+    id,                 // optional: update-by-id
     product_id,
     floral, fruity, citrus, woody, fresh, spicy, sweet, smoky, strength,
-    comment,      // optional
-    status,       // optional (usually set by admin/moderation)
-    upsert = true, // default to upsert by (product_id,user_id)
-    user_id,      // optional: only include if you want to override (e.g., admin/server)
+    comment,            // optional
+    status,             // optional
+    upsert = true,
+    user_id,            // optional: usually omit; DB default should be auth.uid()
   } = payload ?? {};
 
+  // Coerce and clamp
   const clean = {
     product_id,
-    floral, fruity, citrus, woody, fresh, spicy, sweet, smoky, strength,
+    floral:   clamp05(floral),
+    fruity:   clamp05(fruity),
+    citrus:   clamp05(citrus),
+    woody:    clamp05(woody),
+    fresh:    clamp05(fresh),
+    spicy:    clamp05(spicy),
+    sweet:    clamp05(sweet),
+    smoky:    clamp05(smoky),
+    strength: clamp05(strength),
     ...(comment != null ? { comment } : {}),
     ...(status  != null ? { status }  : {}),
-    ...(user_id != null ? { user_id } : {}), // usually omitted; DB default = auth.uid()
+    ...(user_id != null ? { user_id } : {}), // if you pass it explicitly (e.g., admin)
   };
 
-  if (id) {
-    const { data, error } = await supabase
+  try {
+    if (id) {
+      const q = supabase
+        .from(RATINGS_TABLE)
+        .update(clean)
+        .eq("id", id)
+        .select()
+        .single();
+
+      const { data, error } = await withDeadline(q, 12000, "rating.update");
+      if (error) throw error;
+      return data;
+    }
+
+    if (upsert) {
+      // Prefer returning the representation reliably
+      const q = supabase
+        .from(RATINGS_TABLE)
+        .upsert([clean], { onConflict: UPSERT_CONFLICT })
+        .select()
+        .single();
+
+      const { data, error } = await withDeadline(q, 12000, "rating.upsert");
+      if (error) throw error;
+      return data;
+    }
+
+    const q = supabase
       .from(RATINGS_TABLE)
-      .update(clean)
-      .eq("id", id)
+      .insert([clean])
       .select()
       .single();
+
+    const { data, error } = await withDeadline(q, 12000, "rating.insert");
     if (error) throw error;
     return data;
+  } catch (e) {
+    throw new Error(explain(e));
   }
-
-  if (upsert) {
-    const { data, error } = await supabase
-      .from(RATINGS_TABLE)
-      .upsert([clean], { onConflict: UPSERT_CONFLICT })
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
-  }
-
-  const { data, error } = await supabase
-    .from(RATINGS_TABLE)
-    .insert([clean])
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
 }
 
-/**
- * Fetch the CURRENT USER'S existing rating for a product (for editing).
- * RLS should allow: auth.uid() = user_id. We also filter explicitly by user_id.
- */
+/* ---------- read APIs ---------- */
+/** Current user's rating for a product (for editing/prefill). */
 export async function fetchMyRating(product_id) {
-  // get the currently signed-in user id
-  const { data: authData, error: authErr } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
-  const uid = authData?.user?.id;
-  if (!uid) return null;
+  try {
+    const auth = await withDeadline(supabase.auth.getUser(), 8000, "auth.getUser");
+    const uid = auth?.data?.user?.id;
+    if (!uid) return null;
 
-  const { data, error } = await supabase
-    .from(RATINGS_TABLE)
-    .select(
-      "id, product_id, user_id, floral, fruity, citrus, woody, fresh, spicy, sweet, smoky, strength, comment, status, created_at, updated_at"
-    )
-    .eq("product_id", product_id)
-    .eq("user_id", uid)     // ← explicit user scoping
-    .limit(1)               // upsert ensures at most 1 per user
-    .maybeSingle();
+    const q = supabase
+      .from(RATINGS_TABLE)
+      .select(
+        "id, product_id, user_id, floral, fruity, citrus, woody, fresh, spicy, sweet, smoky, strength, comment, status, created_at, updated_at"
+      )
+      .eq("product_id", product_id)
+      .eq("user_id", uid)
+      .limit(1)
+      .maybeSingle();
 
-  if (error) throw error;
-  return data || null;
+    const { data, error } = await withDeadline(q, 10000, "rating.fetchMine");
+    if (error) throw error;
+    return data || null;
+  } catch (e) {
+    throw new Error(explain(e));
+  }
 }
 
-/**
- * Aggregate summary from your precomputed table/view (keep name you already use).
- */
+/** Aggregated summary from your view/table (unchanged). */
 export async function fetchRatingSummary(product_id) {
-  const { data, error } = await supabase
-    .from("ratings_summary")
-    .select("*")
-    .eq("product_id", product_id)
-    .maybeSingle();
+  const q = supabase.from("ratings_summary").select("*").eq("product_id", product_id).maybeSingle();
+  const { data, error } = await withDeadline(q, 10000, "rating.summary");
   if (error) throw error;
   return data || null;
 }
 
-/**
- * Verified-only averages (kept for callers that import this).
- * If your verified data lives in product_ratings with status='verified', this works.
- */
+/** Verified-only averages. */
 export async function fetchRatingSummaryVerified(product_id) {
-  const { data, error } = await supabase
+  const q = supabase
     .from(RATINGS_TABLE)
     .select("floral, fruity, citrus, woody, fresh, spicy, sweet, smoky, strength, status")
     .eq("product_id", product_id)
     .eq("status", "verified");
+
+  const { data, error } = await withDeadline(q, 10000, "rating.summaryVerified");
   if (error) throw error;
 
   const n = data?.length ?? 0;
-  const avg = (k) =>
-    n ? Math.round(data.reduce((s, r) => s + Number(r[k] ?? 0), 0) / n) : 0;
+  const avg = (k) => (n ? Math.round(data.reduce((s, r) => s + Number(r[k] ?? 0), 0) / n) : 0);
 
   return {
     count_verified: n,
@@ -127,36 +166,32 @@ export async function fetchRatingSummaryVerified(product_id) {
   };
 }
 
-/** Recent verified ratings for a product (kept for compatibility) */
+/** Recent verified ratings. */
 export async function fetchRecentVerifiedRatings(product_id, limit = 6) {
-  const { data, error } = await supabase
+  const q = supabase
     .from(RATINGS_TABLE)
     .select("id, created_at, comment, floral, fruity, citrus, woody, fresh, spicy, sweet, smoky, strength, status")
     .eq("product_id", product_id)
     .eq("status", "verified")
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  const { data, error } = await withDeadline(q, 10000, "rating.recentVerified");
   if (error) throw error;
   return data || [];
 }
 
-/** Admin/moderation helpers (unchanged) */
+/** Admin helpers (unchanged, but guarded). */
 export async function updateRatingStatus(id, status) {
-  const { data, error } = await supabase
-    .from(RATINGS_TABLE)
-    .update({ status })
-    .eq("id", id)
-    .select()
-    .single();
+  const q = supabase.from(RATINGS_TABLE).update({ status }).eq("id", id).select().single();
+  const { data, error } = await withDeadline(q, 10000, "rating.updateStatus");
   if (error) throw error;
   return data;
 }
 
 export async function deleteRating(id) {
-  const { error } = await supabase
-    .from(RATINGS_TABLE)
-    .delete()
-    .eq("id", id);
+  const q = supabase.from(RATINGS_TABLE).delete().eq("id", id);
+  const { error } = await withDeadline(q, 10000, "rating.delete");
   if (error) throw error;
   return true;
 }
@@ -172,27 +207,24 @@ export async function listRecentRatings({ limit = 100, status, q } = {}) {
 
   if (q && q.trim()) {
     const needle = `%${q.trim()}%`;
-    query = query.or(
-      [
-        `comment.ilike.${needle}`,
-        `product_id::text.ilike.${needle}`,
-      ].join(",")
-    );
+    query = query.or([`comment.ilike.${needle}`, `product_id::text.ilike.${needle}`].join(","));
   }
 
-  const { data, error } = await query;
+  const { data, error } = await withDeadline(query, 10000, "rating.listRecent");
   if (error) throw error;
   return data || [];
 }
 
-/** For product detail pages, if you still need raw rows (non-verified filter) */
+/** Raw rows if needed. */
 export async function getProductRatings(product_id, { limit = 50 } = {}) {
-  const { data, error } = await supabase
+  const q = supabase
     .from(RATINGS_TABLE)
     .select("id, floral, fruity, citrus, woody, fresh, spicy, sweet, smoky, strength, status, created_at")
     .eq("product_id", product_id)
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  const { data, error } = await withDeadline(q, 10000, "rating.getProduct");
   if (error) throw error;
   return data ?? [];
 }

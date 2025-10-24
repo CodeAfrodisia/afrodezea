@@ -14,6 +14,7 @@ import ProductsGrid from "../components/shop/ProductsGrid.jsx";
 import CollectionTabs from "../components/shop/CollectionTabs.jsx";
 import Filters from "../components/shop/Filters.jsx";
 import { getSiteOrigin } from "../lib/site.js";
+import { mapRow } from "../lib/productsSupabase.js";
 
 // We’ll keep Quick View
 const QuickViewModal = React.lazy(() =>
@@ -42,7 +43,7 @@ const parseMaybeJson = (v) => {
   return null;
 };
 
-function mapRow(row) {
+/* function mapRow(row) {
   const variantsRaw = parseMaybeJson(row.variants) ?? [];
   const optionsRaw = parseMaybeJson(row.options) ?? [];
   const variants = Array.isArray(variantsRaw) ? variantsRaw : [];
@@ -115,7 +116,7 @@ function mapRow(row) {
     image_url: row.image_url || null,
     price_cents: row.price_cents ?? null,
   };
-}
+} */
 
 // ===== collections used by tabs =====
 const COLLECTIONS = [

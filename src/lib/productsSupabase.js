@@ -14,29 +14,87 @@ function parseMaybeJson(v) {
   return null;
 }
 
+
 /* ---------------- mapping ---------------- */
+
+
+function buildOptionsFromVariants(variants) {
+  const waxes = new Set();
+  const sizes = new Set();
+
+  for (const v of variants) {
+    const so = v?.selectedOptions || [];
+    const map = Object.fromEntries(so.map(o => [o.name, o.value]));
+    const wax  = map.Wax  ?? v?.wax;
+    const size = map.Size ?? v?.size;
+    if (wax)  waxes.add(String(wax));
+    if (size) sizes.add(String(size));
+  }
+
+  const out = [];
+  if (waxes.size) out.push({ name: "Wax",  values: Array.from(waxes) });
+  if (sizes.size) out.push({ name: "Size", values: Array.from(sizes) });
+  return out;
+}
+
+
+
 function mapRow(row) {
-  // Never reference undeclared identifiers — compute locally and use those.
-  const slug = row?.slug ?? null;
-  const handle = row?.handle ?? null;        // some older rows may still have this
+  const slug   = row?.slug ?? null;
+  const handle = row?.handle ?? null;
   const handleValue = slug ?? handle ?? null;
 
+  // Raw variants/options as stored
   const variantsRaw = parseMaybeJson(row?.variants) ?? [];
   const optionsRaw  = parseMaybeJson(row?.options)  ?? [];
-  const variants    = Array.isArray(variantsRaw) ? variantsRaw : [];
-  const options     = Array.isArray(optionsRaw)  ? optionsRaw  : [];
 
-  const variantPrices = variants
+  // Normalize variants → ensure selectedOptions + price object
+  const variantsArr = Array.isArray(variantsRaw) ? variantsRaw : [];
+  const variants = variantsArr.map((v, idx) => {
+    const selectedOptions = Array.isArray(v?.selectedOptions) && v.selectedOptions.length
+      ? v.selectedOptions
+      : [
+          v?.wax  ? { name: "Wax",  value: String(v.wax) }  : null,
+          v?.size ? { name: "Size", value: String(v.size) } : null,
+        ].filter(Boolean);
+
+    const id =
+      v?.id ??
+      v?.sku ??
+      `${row?.id || "p"}:v${idx}-${selectedOptions.map(o => o.value).join("-")}`;
+
+    const title =
+      v?.title ??
+      (selectedOptions.length ? selectedOptions.map(o => o.value).join(" • ") : "Default");
+
+    return {
+      id,
+      title,
+      availableForSale: v?.availableForSale != null ? !!v.availableForSale : true,
+      price: {
+        amount: v?.price_cents != null ? centsToAmount(v.price_cents) : null,
+        currencyCode: "USD",
+      },
+      selectedOptions,
+    };
+  });
+
+  // Compute min/max from variant price_cents (fallback to row.price_cents)
+  const variantPrices = variantsArr
     .map(v => v?.price_cents)
-    .filter((n) => typeof n === "number");
+    .filter(n => typeof n === "number");
   const basePrices = variantPrices.length ? variantPrices : [row?.price_cents ?? 0];
   const min = Math.min(...basePrices);
   const max = Math.max(...basePrices);
 
+  // Options list for chips: use DB options if present, else derive from variants
+  const options =
+    Array.isArray(optionsRaw) && optionsRaw.length ? optionsRaw : buildOptionsFromVariants(variants);
+
   return {
     id: row?.id ?? null,
     title: row?.title ?? "",
-    handle: handleValue, // ← unified field the UI expects
+    handle: handleValue,
     description: row?.description || "",
     collection: row?.collection || "",
     images: { nodes: row?.image_url ? [{ url: row.image_url }] : [] },
@@ -46,25 +104,8 @@ function mapRow(row) {
       maxVariantPrice: { amount: centsToAmount(max), currencyCode: "USD" },
     },
 
-    variants: {
-      nodes: variants.map((v, idx) => ({
-        id: v?.id ?? v?.sku ?? `${row?.id || "p"}:v${idx}`,
-        title:
-          v?.title ??
-          (Array.isArray(v?.selectedOptions) && v.selectedOptions.length
-            ? v.selectedOptions.map(o => o?.value).join(" / ")
-            : "Default"),
-        availableForSale:
-          v?.availableForSale != null ? !!v.availableForSale : true,
-        price: {
-          amount: v?.price_cents != null ? centsToAmount(v.price_cents) : null,
-          currencyCode: "USD",
-        },
-        selectedOptions: Array.isArray(v?.selectedOptions) ? v.selectedOptions : [],
-      })),
-    },
-
-    options: options,
+    variants: { nodes: variants },
+    options,
 
     collections: {
       nodes: row?.collection
@@ -78,6 +119,12 @@ function mapRow(row) {
     created_at: row?.created_at ?? null,
   };
 }
+
+
+
+
+
+
 
 /* ---------------- timeout helper ---------------- */
 async function withTimeout(promise, ms = 20000, label = "op") {

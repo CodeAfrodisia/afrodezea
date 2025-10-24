@@ -21,6 +21,17 @@ const FIELDS = [
   "strength",
 ];
 
+// Promise deadline guard so the UI never hangs if the request doesn't settle
+function withDeadline(promise, ms = 12000, label = "op") {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => {
+      timer = setTimeout(() => rej(new Error(`[timeout] ${label} > ${ms}ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export default function RateDrawer({
   open,
   onClose,
@@ -71,7 +82,7 @@ export default function RateDrawer({
       try {
         const r =
           (await fetchMyRating(product.id)) ||
-          existingRating || // optional prop-based prefill
+          existingRating ||
           null;
 
         if (!active) return;
@@ -93,7 +104,7 @@ export default function RateDrawer({
         setTimeout(() => firstRef.current?.focus(), 0);
       } catch (e) {
         if (!active) return;
-        console.error(e);
+        console.error("[ratings] prefill failed:", e);
         setErr(e?.message || "Could not load your previous rating.");
       } finally {
         if (active) setLoadingExisting(false);
@@ -134,6 +145,7 @@ export default function RateDrawer({
   const isEditing = Boolean(existing?.id);
 
   async function submit() {
+    if (submitting) return; // guard double-clicks
     setErr("");
     if (!product?.id) return;
 
@@ -144,7 +156,7 @@ export default function RateDrawer({
         user_id: userId || undefined, // server may default this to auth.uid()
         floral: clamp0to5(vals.floral),
         fruity: clamp0to5(vals.fruity),
-        citrus: clamp0to5(vals.citrus),   // ← fixed (was "citrust")
+        citrus: clamp0to5(vals.citrus),
         woody: clamp0to5(vals.woody),
         fresh: clamp0to5(vals.fresh),
         spicy: clamp0to5(vals.spicy),
@@ -153,27 +165,32 @@ export default function RateDrawer({
         strength: clamp0to5(vals.strength),
       };
 
-      await submitRating(payload);
+      // IMPORTANT: enforce a deadline so UI can't hang forever
+      const res = await withDeadline(submitRating(payload), 12000, "rating.submit");
+      // optional debug:
+      // console.debug("[ratings] submit result:", res);
 
-      // let parent optimistically update graphs
-      try {
-        onSubmitted?.({
-          floral: vals.floral,
-          fruity: vals.fruity,
-          citrus: vals.citrus,
-          woody: vals.woody,
-          fresh: vals.fresh,
-          spicy: vals.spicy,
-          sweet: vals.sweet,
-          smoky: vals.smoky,
-          strength: vals.strength,
-        });
-      } catch {}
+      // Let parent optimistically update graphs
+      onSubmitted?.({
+        floral: vals.floral,
+        fruity: vals.fruity,
+        citrus: vals.citrus,
+        woody: vals.woody,
+        fresh: vals.fresh,
+        spicy: vals.spicy,
+        sweet: vals.sweet,
+        smoky: vals.smoky,
+        strength: vals.strength,
+      });
 
       onClose?.();
     } catch (e) {
-      console.error(e);
-      setErr(e?.message || "Something went wrong.");
+      console.error("[ratings] submit failed:", e);
+      // Show helpful text (e.g., RLS errors, timeouts)
+      setErr(
+        (e && e.message) ||
+          "Something went wrong while submitting your rating."
+      );
     } finally {
       setSubmitting(false);
     }
