@@ -1,3 +1,4 @@
+// src/lib/productsSupabase.js
 import supabase from "./supabaseClient.js";
 
 /* ---------- helpers ---------- */
@@ -10,20 +11,19 @@ const slugify = (s) => String(s ?? "")
 function parseMaybeJson(v) {
   if (Array.isArray(v) || v === null || typeof v === "object") return v;
   if (typeof v === "string") {
-    try { const j = JSON.parse(v); return j; } catch { /* fall through */ }
+    try { return JSON.parse(v); } catch {}
   }
   return null;
 }
 
+/* Map only the fields the UI needs */
 function mapRow(row) {
-  // Parse JSON-ish columns that might be stored as text
   const variantsRaw = parseMaybeJson(row.variants) ?? [];
   const optionsRaw  = parseMaybeJson(row.options)  ?? [];
 
   const variants = Array.isArray(variantsRaw) ? variantsRaw : [];
   const options  = Array.isArray(optionsRaw)  ? optionsRaw  : [];
 
-  // Compute min/max price from variants (fallback to row.price_cents)
   const variantPrices = variants.map(v => v.price_cents).filter(n => n != null);
   const basePrices = variantPrices.length ? variantPrices : [row.price_cents ?? 0];
   const min = Math.min(...basePrices);
@@ -42,9 +42,8 @@ function mapRow(row) {
       maxVariantPrice: { amount: centsToAmount(max), currencyCode: "USD" },
     },
 
-    // 👇 Normalize every variant to the shape the UI expects
     variants: {
-      nodes: variants.map((v) => {
+      nodes: (variants || []).map((v) => {
         const selectedOptions = Array.isArray(v.selectedOptions) && v.selectedOptions.length
           ? v.selectedOptions
           : [
@@ -64,20 +63,17 @@ function mapRow(row) {
           title: v.title ?? (selectedOptions.length
             ? selectedOptions.map(o => o.value).join(" / ")
             : "Default"),
-          availableForSale:
-            v.availableForSale != null ? !!v.availableForSale : true, // default true
+          availableForSale: v.availableForSale != null ? !!v.availableForSale : true,
           price: {
             amount: v.price_cents != null ? centsToAmount(v.price_cents) : null,
             currencyCode: "USD",
           },
-          selectedOptions, // [{name, value}]
+          selectedOptions,
         };
       }),
     },
 
-    // Options list for the chips (parse or fallback)
-    options: options,
-
+    options,
     collections: {
       nodes: row.collection
         ? [{ title: row.collection, handle: String(row.collection).toLowerCase() }]
@@ -89,36 +85,35 @@ function mapRow(row) {
   };
 }
 
-/* ---------- timeout helper (unchanged) ---------- */
+/* timeout helper */
 async function withTimeout(promise, ms = 20000, label = "op") {
-  let timer;
+  let t;
   try {
-    const raced = await Promise.race([
+    return await Promise.race([
       promise,
-      new Promise((_, rej) =>
-        (timer = setTimeout(() => rej(new Error(`[timeout] ${label} > ${ms}ms`)), ms))
-      ),
+      new Promise((_, rej) => (t = setTimeout(() => rej(new Error(`[timeout] ${label} > ${ms}ms`)), ms))),
     ]);
-    return raced;
   } finally {
-    clearTimeout(timer);
+    clearTimeout(t);
   }
 }
 
-/* ---------- list/search/single (unchanged except they use mapRow) ---------- */
+/* label map for collections */
+const LABEL_BY_KEY = {
+  affirmation: "Affirmation",
+  afrodisia:   "Afrodisia",
+  pantheon:    "Pantheon",
+  fall:        "Fall",
+  winter:      "Winter",
+};
+
+/* ---------- list (light) ---------- */
 export async function fetchProductsFromSupabase({ query = "", collection = "all", limit = 60 } = {}) {
   let q = supabase
     .from("products")
-    .select("*")
-    .order("created_at", { ascending: false, nullsLast: true });
-
-  const LABEL_BY_KEY = {
-    affirmation: "Affirmation",
-    afrodisia: "Afrodisia",
-    pantheon: "Pantheon",
-    fall: "Fall",
-    winter: "Winter",
-  };
+    .select("id, slug, handle, title, price_cents, image_url, collection, tags, created_at", { count: "planned" })
+    .order("created_at", { ascending: false, nullsLast: true })
+    .limit(limit);
 
   if (collection && collection !== "all") {
     const label = LABEL_BY_KEY[collection] ?? collection;
@@ -127,53 +122,65 @@ export async function fetchProductsFromSupabase({ query = "", collection = "all"
 
   if (query && query.trim()) {
     const needle = `%${query.trim()}%`;
-    q = q.or(`title.ilike.${needle},description.ilike.${needle}`);
+    q = q.ilike("title", needle); // title-only for speed
   }
 
-  q = q.limit(limit);
-
-  const { data, error } = await q;
+  const { data, error } = await withTimeout(q, 20000, "products.list");
   if (error) throw error;
   return (data || []).map(mapRow);
 }
 export const fetchProductsSupabase = (args) => fetchProductsFromSupabase(args);
 
+/* ---------- single by handle (kept for ProductDetail) ---------- */
 export async function fetchProductByHandleFromSupabase(handle) {
-  let { data, error } = await supabase.from("products").select("*").eq("slug", handle).maybeSingle();
-  if (error?.code === "42703" || (!data && !error)) {
-    const res2 = await supabase.from("products").select("*").eq("handle", handle).maybeSingle();
+  // Try slug first (new schema)
+  let { data, error } = await supabase
+    .from("products")
+    .select("id, slug, handle, title, description, price_cents, image_url, collection, tags, created_at, variants, options")
+    .eq("slug", handle)
+    .maybeSingle();
+
+  // Fallback to legacy "handle" column if slug didn’t hit
+  if ((!data && !error) || (error && error.code === "42703")) {
+    const res2 = await supabase
+      .from("products")
+      .select("id, slug, handle, title, description, price_cents, image_url, collection, tags, created_at, variants, options")
+      .eq("handle", handle)
+      .maybeSingle();
     data = res2.data; error = res2.error;
   }
+
   if (error) throw error;
   return data ? mapRow(data) : null;
 }
 
+/* ---------- search for grid (optimized) ---------- */
 export async function searchProducts({
   q, collection, tags, minPriceCents, maxPriceCents, order = "new", page = 1, pageSize = 24,
 } = {}) {
   const from = Math.max(0, (page - 1) * pageSize);
   const to   = from + pageSize - 1;
 
-  let base = supabase.from("products").select("*", { count: "exact" });
-
-  if (q && q.trim()) {
-    const needle = `%${q.trim()}%`;
-    base = base.or(`title.ilike.${needle},description.ilike.${needle}`);
-  }
+  let base = supabase
+    .from("products")
+    .select("id, slug, handle, title, price_cents, image_url, collection, tags, created_at, variants, options", {
+      count: "planned", // fast estimate
+    });
 
   if (collection && collection !== "all") {
-    const LABEL_BY_KEY = {
-      affirmation: "Affirmation",
-      afrodisia:   "Afrodisia",
-      pantheon:    "Pantheon",
-      fall:        "Fall",
-      winter:      "Winter",
-    };
     const label = LABEL_BY_KEY[collection] ?? collection;
     base = base.eq("collection", label);
   }
 
-  if (tags && tags.length) base = base.overlaps("tags", tags.map(t => t.toLowerCase()));
+  if (q && q.trim()) {
+    const needle = `%${q.trim()}%`;
+    base = base.ilike("title", needle); // fast with trigram index
+  }
+
+  if (Array.isArray(tags) && tags.length) {
+    base = base.overlaps("tags", tags.map(t => String(t).toLowerCase()));
+  }
+
   if (typeof minPriceCents === "number") base = base.gte("price_cents", minPriceCents);
   if (typeof maxPriceCents === "number") base = base.lte("price_cents", maxPriceCents);
 

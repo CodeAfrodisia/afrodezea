@@ -10,16 +10,114 @@ import React, {
 import { useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 
-import { searchProducts } from "../lib/productsSupabase.js";
 import ProductsGrid from "../components/shop/ProductsGrid.jsx";
 import CollectionTabs from "../components/shop/CollectionTabs.jsx";
 import Filters from "../components/shop/Filters.jsx";
 import { getSiteOrigin } from "../lib/site.js";
 
+// We’ll keep Quick View
 const QuickViewModal = React.lazy(() =>
   import("../components/shop/QuickViewModal.jsx")
 );
 
+/* const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY; */
+
+
+// ---- tiny utils used by mapping ----
+const centsToAmount = (c) => (c ?? 0) / 100;
+const slugify = (s) =>
+  String(s ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const parseMaybeJson = (v) => {
+  if (Array.isArray(v) || v === null || typeof v === "object") return v;
+  if (typeof v === "string") {
+    try {
+      return JSON.parse(v);
+    } catch {}
+  }
+  return null;
+};
+
+function mapRow(row) {
+  const variantsRaw = parseMaybeJson(row.variants) ?? [];
+  const optionsRaw = parseMaybeJson(row.options) ?? [];
+  const variants = Array.isArray(variantsRaw) ? variantsRaw : [];
+  const options = Array.isArray(optionsRaw) ? optionsRaw : [];
+
+  const variantPrices = variants
+    .map((v) => v.price_cents)
+    .filter((n) => n != null);
+  const basePrices = variantPrices.length
+    ? variantPrices
+    : [row.price_cents ?? 0];
+  const min = Math.min(...basePrices);
+  const max = Math.max(...basePrices);
+
+  return {
+    id: row.id,
+    title: row.title,
+    handle: row.slug ?? row.handle ?? null,
+    description: row.description || "",
+    collection: row.collection || "",
+    images: { nodes: row.image_url ? [{ url: row.image_url }] : [] },
+    priceRange: {
+      minVariantPrice: { amount: centsToAmount(min), currencyCode: "USD" },
+      maxVariantPrice: { amount: centsToAmount(max), currencyCode: "USD" },
+    },
+    variants: {
+      nodes: (variants || []).map((v) => {
+        const selectedOptions =
+          Array.isArray(v.selectedOptions) && v.selectedOptions.length
+            ? v.selectedOptions
+            : [
+                v.wax ? { name: "Wax", value: String(v.wax) } : null,
+                v.size ? { name: "Size", value: String(v.size) } : null,
+              ].filter(Boolean);
+
+        const vid =
+          v.id ??
+          v.sku ??
+          `${row.id}:${slugify(
+            v.title ||
+              [v.wax, v.size].filter(Boolean).join(" / ") ||
+              "default"
+          )}`;
+
+        return {
+          id: vid,
+          title:
+            v.title ??
+            (selectedOptions.length
+              ? selectedOptions.map((o) => o.value).join(" / ")
+              : "Default"),
+          availableForSale:
+            v.availableForSale != null ? !!v.availableForSale : true,
+          price: {
+            amount:
+              v.price_cents != null ? centsToAmount(v.price_cents) : null,
+            currencyCode: "USD",
+          },
+          selectedOptions,
+        };
+      }),
+    },
+    options,
+    collections: {
+      nodes: row.collection
+        ? [{ title: row.collection, handle: String(row.collection).toLowerCase() }]
+        : [],
+    },
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    image_url: row.image_url || null,
+    price_cents: row.price_cents ?? null,
+  };
+}
+
+// ===== collections used by tabs =====
 const COLLECTIONS = [
   { key: "all", label: "All Collections" },
   { key: "affirmation", label: "Affirmation" },
@@ -36,6 +134,120 @@ const SITE_URL =
 const parseCsv = (s) =>
   s ? s.split(",").map((t) => t.trim()).filter(Boolean) : [];
 const toCsv = (arr) => (arr && arr.length ? arr.join(",") : "");
+
+// ---------- direct REST helpers ----------
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL?.replace(/\/+$/, "") ||
+  "https://tepmeumtieuyqdtdsurb.supabase.co"; // fallback to your known project
+
+const SUPABASE_ANON =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  // Fallback lets local dev work; safe because anon keys are public by design
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlcG1ldW10aWV1eXFkdGRzdXJiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk0OTc4ODgsImV4cCI6MjA2NTA3Mzg4OH0.2__GntZeNhcqQrs9XrWKY20CK5zjISVYvm0tQ3SBhG0";
+
+function esc(v) {
+  return encodeURIComponent(v);
+}
+
+function buildQuery({ q, collection, tags, minPriceCents, maxPriceCents, order, from, to }) {
+  const params = new URLSearchParams();
+
+  // Single, final select only once
+  params.set(
+    "select",
+    "id,slug,handle:slug,title,price_cents,image_url,collection,tags,created_at,variants,options"
+  );
+
+  // Search across title/description (only when q is non-empty)
+  if (q && q.trim()) {
+    const needle = `*${q.trim().replace(/\s+/g, "*")}*`; // PostgREST wildcards
+    params.set("or", `(title.ilike.${needle},description.ilike.${needle})`);
+  }
+
+  // Collection (map keys → labels)
+  if (collection && collection !== "all") {
+    const LABEL = { affirmation:"Affirmation", afrodisia:"Afrodisia", pantheon:"Pantheon", fall:"Fall", winter:"Winter" };
+    const label = LABEL[collection] ?? collection;
+    params.set("collection", `eq.${label}`);
+  }
+
+  // Tags (array overlap)
+  if (Array.isArray(tags) && tags.length) {
+    params.set("tags", `ov.{${tags.map((t)=>t.toLowerCase()).join(",")}}`);
+  }
+
+  // Price range
+  if (typeof minPriceCents === "number") params.set("price_cents", `gte.${minPriceCents}`);
+  if (typeof maxPriceCents === "number") params.set("price_cents", `lte.${maxPriceCents}`);
+
+  // Order
+  if (order === "price_asc")       params.set("order", "price_cents.asc.nullslast");
+  else if (order === "price_desc") params.set("order", "price_cents.desc.nullslast");
+  else                             params.set("order", "created_at.desc.nullslast");
+
+  // Page window — ensure they are concrete numbers
+  const limit  = Math.max(1, (to - from + 1) | 0);
+  const offset = Math.max(0, from | 0);
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+
+  return params.toString();
+}
+
+
+
+
+async function fetchProductsREST(args, deadlineMs = 20000) {
+  const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
+  const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!SUPABASE_URL || !SUPABASE_ANON) throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+
+  const from = Math.max(0, (args.page - 1) * args.pageSize);
+  const to   = from + args.pageSize - 1;
+
+  const qs  = buildQuery({ ...args, from, to });
+  const url = `${SUPABASE_URL}/rest/v1/products?${qs}`;
+
+  const headers = {
+    apikey: SUPABASE_ANON,
+    Authorization: `Bearer ${SUPABASE_ANON}`,
+    "Content-Type": "application/json",
+    Prefer: "count=exact",
+  };
+
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort("[abort] products.rest deadline"), deadlineMs);
+
+  try {
+    console.time("[products] rest");
+    console.log("[products] rest url", url); // 👈 will show the full URL in the console
+    const res  = await fetch(url, { headers, signal: ctrl.signal });
+
+    const raw  = await res.text();
+    let body   = null;
+    try { body = raw ? JSON.parse(raw) : null; } catch { body = raw; }
+
+    if (!res.ok) {
+      console.log("[products] rest status", res.status, "body:", body);
+      const msg = body && typeof body === "object"
+        ? (body.message || JSON.stringify(body))
+        : String(body || "Bad request");
+      throw new Error(`REST ${res.status}: ${msg}`);
+    }
+
+    const arr = Array.isArray(body) ? body : [];
+    const range = res.headers.get("content-range"); // e.g. "0-35/123"
+    const total = range ? Number(range.split("/")[1]) : arr.length;
+
+    return { rows: arr.map(mapRow), total };
+  } finally {
+    clearTimeout(timer);
+    console.timeEnd("[products] rest");
+  }
+}
+
+
+
 
 // small pill button
 function Chip({ children, onClick }) {
@@ -96,19 +308,24 @@ export default function ProductsPage() {
 
   const [tagCatalog, setTagCatalog] = useState([]);
 
+  const PAGE_SIZE = 36;
+
   // ---------- fetch tag catalog ----------
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const supabase = (await import("@lib/supabaseClient.js")).default;
-        const { data, error } = await supabase
-          .from("products_tags_catalog")
-          .select("tag")
-          .order("tag", { ascending: true });
-        if (!error && alive) {
-          setTagCatalog((data || []).map((r) => String(r.tag).toLowerCase()));
-        }
+        // direct REST for tags as well (keeps the same reliable path)
+        const url = `${SUPABASE_URL}/rest/v1/products_tags_catalog?select=tag&order=tag.asc`;
+        const res = await fetch(url, {
+          headers: {
+            apikey: SUPABASE_ANON,
+            Authorization: `Bearer ${SUPABASE_ANON}`,
+          },
+        });
+        const data = await res.json();
+        if (!alive) return;
+        setTagCatalog((data || []).map((r) => String(r.tag).toLowerCase()));
       } catch {
         /* ignore */
       }
@@ -204,14 +421,15 @@ export default function ProductsPage() {
     setSlide(1);
   };
 
-  // ---------- fetch products (one big chunk; local paging) ----------
+  // ---------- fetch products via direct REST (fast path) ----------
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setErr("");
-    const t = setTimeout(async () => {
+
+    (async () => {
       try {
-        const { rows, total } = await searchProducts({
+        const { rows, total } = await fetchProductsREST({
           q: query,
           collection: activeCollection,
           tags,
@@ -219,41 +437,37 @@ export default function ProductsPage() {
           maxPriceCents: typeof max === "number" ? max : undefined,
           order,
           page: 1,
-          pageSize: 120, // generous upper bound
+          pageSize: PAGE_SIZE,
         });
-        if (alive) {
-          setRows(rows);
-          setTotal(total);
-          setSlide(1);
-        }
+        if (!alive) return;
+        setRows(rows);
+        setTotal(total);
+        setSlide(1);
       } catch (e) {
-        if (alive) {
-          setErr(e?.message || "Could not load products.");
-          setRows([]);
-          setTotal(0);
-        }
+        if (!alive) return;
+        console.warn("[products] rest error:", e);
+        setErr(e?.message || "Could not load products.");
+        setRows([]);
+        setTotal(0);
       } finally {
         if (alive) setLoading(false);
       }
-    }, 160);
+    })();
+
     return () => {
       alive = false;
-      clearTimeout(t);
     };
   }, [query, activeCollection, tags.join("|"), min, max, order]);
 
   // ---------- Layout & measurement ----------
-  // Match ProductsGrid props
-  const GAP = 24;     // inter-card gap in px (must match ProductsGrid)
-  const CARD_W = 300; // minimum card width in px (must match ProductsGrid)
+  const GAP = 24; // must match ProductsGrid gap
+  const CARD_W = 300; // must match ProductsGrid min
 
-  // Observe the products area width → compute how many full cards fit
   const gridWrapRef = useRef(null);
   const [columns, setColumns] = useState(4);
 
-  // Also decide if the layout should collapse the left rail on narrow screens
   const frameRef = useRef(null);
-  const [isNarrow, setIsNarrow] = useState(false); // breakpoint ~ 980px
+  const [isNarrow, setIsNarrow] = useState(false); // breakpoint ~980px
 
   // columns calc
   useEffect(() => {
@@ -262,7 +476,6 @@ export default function ProductsPage() {
 
     const calc = (width) => {
       const w = width ?? el.clientWidth ?? 0;
-      // How many full tracks (CARD_W + GAP) fit in the wrapper width?
       const cols = Math.max(1, Math.floor((w + GAP) / (CARD_W + GAP)));
       setColumns(cols);
     };
@@ -273,7 +486,7 @@ export default function ProductsPage() {
     return () => ro.disconnect();
   }, []);
 
-  // narrow mode calc (affects grid template with/without sidebar)
+  // narrow calc
   useEffect(() => {
     const el = frameRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -292,7 +505,6 @@ export default function ProductsPage() {
   const perSlide = 2 * Math.max(1, columns);
   const totalSlides = Math.max(1, Math.ceil((rows?.length || 0) / perSlide));
 
-  // clamp slide to bounds on any dependency change
   useLayoutEffect(() => {
     setSlide((prev) => Math.min(Math.max(prev, 1), totalSlides));
   }, [totalSlides]);
@@ -340,8 +552,7 @@ export default function ProductsPage() {
         />
       </Suspense>
 
-      {/* ==== PAGE FRAME (no fixed height; grows naturally; bottom
-             spacing handled by --footer-height from useViewportChrome) ==== */}
+      {/* PAGE FRAME */}
       <div
         ref={frameRef}
         className="container"
@@ -356,14 +567,14 @@ export default function ProductsPage() {
             : `"header header" "aside main"`,
         }}
       >
-        {/* Header (spans columns in wide mode) */}
+        {/* Header */}
         <div style={{ gridArea: "header", opacity: 0.85 }}>
           {loading ? "Loading…" : `${total} result${total === 1 ? "" : "s"}`}
           {query ? ` for “${query}”` : ""}
           {activeCollection !== "all" ? ` in ${activeCollection}` : ""}
         </div>
 
-        {/* Sidebar / Filters */}
+        {/* Sidebar */}
         <aside
           style={{
             gridArea: "aside",
