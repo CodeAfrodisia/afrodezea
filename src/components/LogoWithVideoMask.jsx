@@ -2,15 +2,20 @@
 import React, { useEffect, useRef, useState } from "react";
 
 /**
- * Video-in-logo mask with optional crossfade looping and glass highlights.
- * (Shorthand mask fixed for prod: use explicit mask properties + static fallback.)
+ * Video-in-logo mask with optional crossfade loop and glass highlights.
+ * Deploy-safe:
+ *  - Autoplay policy (muted + playsInline), retry on gesture if blocked
+ *  - crossOrigin="anonymous" (enable CORS on your video host if not same-origin)
+ *  - Respects prefers-reduced-motion
+ *
+ * TIP: For simplest hosting, put files in /public/videos and pass "/videos/hero.mp4"
  */
 export default function LogoWithVideoMask({
   // assets
-  logoSrc,
-  mp4Src,
-  webmSrc,
-  poster,
+  logoSrc,           // mask image (SVG/PNG) under /public
+  mp4Src,            // MP4 (H.264/AAC) – required for Safari
+  webmSrc,           // optional – Chrome/Edge/Firefox
+  poster,            // optional poster
 
   // sizing & look
   width = "220px",
@@ -37,110 +42,168 @@ export default function LogoWithVideoMask({
   const rafId = useRef(0);
   const fading = useRef(false);
 
-  const [active, setActive]   = useState(0);     // 0 or 1: which is on top
-  const [ready, setReady]     = useState(false);
-  const [duration, setDur]    = useState(0);
+  const [active, setActive] = useState(0);   // 0 or 1
+  const [readyA, setReadyA] = useState(false);
+  const [readyB, setReadyB] = useState(false);
+  const [duration, setDuration] = useState(0); // from v0
   const [videoErr, setVideoErr] = useState(false);
+  const [autoBlocked, setAutoBlocked] = useState(false);
 
-  /* ---------------- helpers ---------------- */
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const allReady = crossfade ? (readyA && readyB) : readyA;
+
   const safePlay = (el) => {
     if (!el) return;
+    // ensure policy-friendly flags before play()
+    el.muted = true;
+    el.playsInline = true;
     const p = el.play();
-    if (p && typeof p.catch === "function") p.catch(() => {});
+    if (p && typeof p.catch === "function") {
+      p.catch(() => setAutoBlocked(true));
+    }
   };
 
   /* ---- Pause when off-screen (optional) ---- */
   useEffect(() => {
     if (!pauseOffscreen) return;
-    const el = v0.current;
-    if (!el) return;
+    const anchor = v0.current;
+    if (!anchor) return;
 
-    const io = new IntersectionObserver(([e]) => {
-      const a = v0.current, b = v1.current;
-      if (!a) return;
-      if (e.isIntersecting) { safePlay(a); if (crossfade) safePlay(b); }
-      else { a.pause(); b?.pause(); }
-    }, { threshold: 0.1, rootMargin: "200px 0px" });
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        const a = v0.current, b = v1.current;
+        if (!a) return;
+        if (entry.isIntersecting) {
+          safePlay(a);
+          if (crossfade && b) safePlay(b);
+        } else {
+          a.pause();
+          if (b) b.pause();
+        }
+      },
+      { threshold: 0.1, rootMargin: "200px 0px" }
+    );
 
-    io.observe(el);
+    io.observe(anchor);
     return () => io.disconnect();
   }, [pauseOffscreen, crossfade]);
 
-  /* ---- Bootstrap + visibility resilience ---- */
+  /* ---- Bootstrap A (and duration) ---- */
   useEffect(() => {
     const a = v0.current;
     if (!a) return;
-
     const onMeta = () => {
       const d = a.duration || 0;
       if (Number.isFinite(d) && d > 0) {
-        setDur(d);
-        setReady(true);
-        safePlay(a);
-        if (crossfade && v1.current) safePlay(v1.current);
+        setDuration(d);
+        setReadyA(true);
+        if (!prefersReducedMotion) safePlay(a);
       }
     };
     const onErr = () => setVideoErr(true);
+    const onCanPlay = () => {
+      if (!prefersReducedMotion) safePlay(a);
+    };
 
     a.addEventListener("loadedmetadata", onMeta, { once: true });
+    a.addEventListener("canplay", onCanPlay);
     a.addEventListener("error", onErr);
     if (a.readyState >= 1) onMeta();
 
+    // Try again when tab regains focus (Safari sometimes stalls)
     const onWake = () => {
       if (document.hidden) return;
-      safePlay(v0.current);
-      if (crossfade) safePlay(v1.current);
+      if (!prefersReducedMotion) safePlay(v0.current);
     };
     window.addEventListener("visibilitychange", onWake);
     window.addEventListener("focus", onWake);
     window.addEventListener("pageshow", onWake);
 
-    // Stall watchdog (Safari can pause time updates)
-    let lastT = 0, lastTick = performance.now();
+    return () => {
+      a.removeEventListener("canplay", onCanPlay);
+      a.removeEventListener("error", onErr);
+      window.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("pageshow", onWake);
+    };
+  }, [prefersReducedMotion]);
+
+  /* ---- Bootstrap B (if crossfade) ---- */
+  useEffect(() => {
+    if (!crossfade) return;
+    const b = v1.current;
+    if (!b) return;
+
+    const onMeta = () => {
+      // We don’t need duration from B; just ensure it can play
+      setReadyB(true);
+      if (!prefersReducedMotion) safePlay(b);
+    };
+    const onErr = () => setVideoErr(true);
+    const onCanPlay = () => {
+      if (!prefersReducedMotion) safePlay(b);
+    };
+
+    b.addEventListener("loadedmetadata", onMeta, { once: true });
+    b.addEventListener("canplay", onCanPlay);
+    b.addEventListener("error", onErr);
+    if (b.readyState >= 1) onMeta();
+
+    return () => {
+      b.removeEventListener("canplay", onCanPlay);
+      b.removeEventListener("error", onErr);
+    };
+  }, [crossfade, prefersReducedMotion]);
+
+  /* ---- Watchdog: nudge if time stops updating ---- */
+  useEffect(() => {
+    let lastT = 0;
+    let lastTick = performance.now();
     const watch = () => {
       const now = performance.now();
       const A = [v0.current, v1.current][active];
       if (A && !A.paused) {
         const t = A.currentTime || 0;
         if (now - lastTick > 1500 && Math.abs(t - lastT) < 0.05) safePlay(A);
-        lastT = t; lastTick = now;
+        lastT = t;
+        lastTick = now;
       }
       rafId.current = requestAnimationFrame(watch);
     };
     rafId.current = requestAnimationFrame(watch);
+    return () => cancelAnimationFrame(rafId.current);
+  }, [active]);
 
-    return () => {
-      cancelAnimationFrame(rafId.current);
-      window.removeEventListener("visibilitychange", onWake);
-      window.removeEventListener("focus", onWake);
-      window.removeEventListener("pageshow", onWake);
-      a.removeEventListener("loadedmetadata", onMeta);
-      a.removeEventListener("error", onErr);
-    };
-  }, [crossfade, active]);
-
-  /* ---- Crossfade scheduler (core loop) ---- */
+  /* ---- Crossfade loop ---- */
   useEffect(() => {
-    if (!crossfade || !ready) return;
+    if (!crossfade || !allReady || prefersReducedMotion) return;
 
     const vids = [v0.current, v1.current];
     if (!vids[0] || !vids[1]) return;
 
-    // reflect which one is active
-    vids.forEach(el => { el.loop = false; el.style.transition = "opacity 0s"; });
-    vids[active].style.opacity = "1";
-    vids[1 - active].style.opacity = "0";
-    safePlay(vids[active]);
-    safePlay(vids[1 - active]);
+    // init opacity + no native looping; we orchestrate
+    vids.forEach((el, i) => {
+      if (!el) return;
+      el.loop = false;
+      el.style.transition = "opacity 0s";
+      el.style.opacity = i === active ? "1" : "0";
+      safePlay(el);
+    });
 
     const fadeNow = () => {
       if (fading.current) return;
-      fading.current = true;
-
       const A = vids[active];
       const B = vids[1 - active];
+      if (!A || !B) return;
 
-      try { B.currentTime = 0; } catch {}
+      fading.current = true;
+      try {
+        B.currentTime = 0;
+      } catch {}
       safePlay(B);
 
       B.style.transition = `opacity ${fadeDuration}s ease`;
@@ -150,21 +213,19 @@ export default function LogoWithVideoMask({
 
       setTimeout(() => {
         A.pause();
-        try { A.currentTime = 0; } catch {}
+        try {
+          A.currentTime = 0;
+        } catch {}
         fading.current = false;
-        setActive(prev => 1 - prev); // re-run this effect with new active
+        setActive((prev) => 1 - prev);
       }, fadeDuration * 1000 + 40);
     };
-
-    // safety: if timing drifts, also react to native ended
-    const onEnded = () => fadeNow();
-    vids[active].addEventListener("ended", onEnded);
 
     const tick = () => {
       const A = vids[active];
       if (A && !fading.current) {
-        const d  = duration || A.duration || 0;
-        const t  = A.currentTime || 0;
+        const d = duration || A.duration || 0;
+        const t = A.currentTime || 0;
         const remaining = Math.max(0, d - t);
         const guard = Math.max(0.08, fadeDuration * 0.15);
         if (remaining <= fadeDuration + guard) fadeNow();
@@ -172,23 +233,44 @@ export default function LogoWithVideoMask({
       rafId.current = requestAnimationFrame(tick);
     };
 
+    // safety: catch native ended as well
+    const onEnded = fadeNow;
+    vids[active].addEventListener("ended", onEnded);
     rafId.current = requestAnimationFrame(tick);
 
     return () => {
       cancelAnimationFrame(rafId.current);
-      vids[active].removeEventListener("ended", onEnded);
+      vids[active]?.removeEventListener("ended", onEnded);
     };
-  }, [crossfade, ready, duration, active, fadeDuration]);
+  }, [crossfade, allReady, duration, active, fadeDuration, prefersReducedMotion]);
 
-  /* ---- Simple single-video loop (no crossfade) ---- */
+  /* ---- Simple loop when not crossfading ---- */
   useEffect(() => {
-    if (crossfade || !ready) return;
+    if (crossfade || !readyA) return;
     const a = v0.current;
     if (!a) return;
     a.loop = true;
     a.style.opacity = "1";
-    safePlay(a);
-  }, [crossfade, ready]);
+    if (!prefersReducedMotion) safePlay(a);
+  }, [crossfade, readyA, prefersReducedMotion]);
+
+  /* ---- Retry play on user gesture if autoplay blocked ---- */
+  useEffect(() => {
+    if (!autoBlocked) return;
+    const onTap = () => {
+      setAutoBlocked(false);
+      const a = v0.current;
+      const b = v1.current;
+      if (a) safePlay(a);
+      if (crossfade && b) safePlay(b);
+    };
+    window.addEventListener("click", onTap, { once: true });
+    window.addEventListener("touchend", onTap, { once: true });
+    return () => {
+      window.removeEventListener("click", onTap, { once: true });
+      window.removeEventListener("touchend", onTap, { once: true });
+    };
+  }, [autoBlocked, crossfade]);
 
   /* ---------------- styles ---------------- */
   const wrapStyle = {
@@ -202,20 +284,22 @@ export default function LogoWithVideoMask({
 
   const stack = { position: "relative", width: "100%", aspectRatio: String(aspect) };
 
-  // ✅ EXPLICIT mask props (avoid shorthand that breaks on prod Safari/Chromium)
-  const maskBoxStyle = debugUnmasked ? {} : {
-    position: "absolute",
-    inset: 0,
-    WebkitMaskImage: `url("${logoSrc}")`,
-    maskImage: `url("${logoSrc}")`,
-    WebkitMaskRepeat: "no-repeat",
-    maskRepeat: "no-repeat",
-    WebkitMaskPosition: "center",
-    maskPosition: "center",
-    WebkitMaskSize: "contain",
-    maskSize: "contain",
-    overflow: "hidden",
-  };
+  // Mask box (explicit properties—shorthand is flaky on some builds)
+  const maskBoxStyle = debugUnmasked
+    ? {}
+    : {
+        position: "absolute",
+        inset: 0,
+        WebkitMaskImage: `url("${logoSrc}")`,
+        maskImage: `url("${logoSrc}")`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        overflow: "hidden",
+      };
 
   const videoBase = {
     position: "absolute",
@@ -230,30 +314,30 @@ export default function LogoWithVideoMask({
     filter: "contrast(1.12) saturate(1.08) brightness(1.06)",
     pointerEvents: "none",
     transition: "opacity 0s linear",
-    opacity: 0, // scheduler sets active → 1
+    opacity: 0,
   };
 
-  // Glass layers (unchanged)
-  const commonMasked = debugUnmasked ? {} : {
-    WebkitMaskImage: `url("${logoSrc}")`,
-    maskImage: `url("${logoSrc}")`,
-    WebkitMaskRepeat: "no-repeat",
-    maskRepeat: "no-repeat",
-    WebkitMaskPosition: "center",
-    maskPosition: "center",
-    WebkitMaskSize: "contain",
-    maskSize: "contain",
-  };
+  const commonMasked = debugUnmasked
+    ? {}
+    : {
+        WebkitMaskImage: `url("${logoSrc}")`,
+        maskImage: `url("${logoSrc}")`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+      };
 
   const glassStyle = {
     position: "absolute",
     inset: 0,
     ...commonMasked,
-    background:
-      `radial-gradient(42% 28% at 50% 24%, rgba(255,240,200,${0.45 * glassIntensity}), transparent 70%),
-       linear-gradient(to bottom,
-         color-mix(in oklab, #ffb76a, white 38%),
-         color-mix(in oklab, #ffb76a, black 28%))`,
+    background: `radial-gradient(42% 28% at 50% 24%, rgba(255,240,200,${0.45 * glassIntensity}), transparent 70%),
+                 linear-gradient(to bottom,
+                   color-mix(in oklab, #ffb76a, white 38%),
+                   color-mix(in oklab, #ffb76a, black 28%))`,
     mixBlendMode: "screen",
     opacity: Math.min(0.95, 0.82 * glassIntensity),
     filter: `saturate(${1.05 + 0.05 * glassIntensity}) brightness(${1.02 + 0.02 * glassIntensity})`,
@@ -264,9 +348,8 @@ export default function LogoWithVideoMask({
     position: "absolute",
     inset: 0,
     ...commonMasked,
-    background:
-      `radial-gradient(65% 55% at 50% 35%, rgba(255,255,255,${0.18 * glassIntensity}), transparent 72%),
-       radial-gradient(90% 80% at 50% 60%, rgba(0,0,0,${0.10 * glassIntensity}), transparent 78%)`,
+    background: `radial-gradient(65% 55% at 50% 35%, rgba(255,255,255,${0.18 * glassIntensity}), transparent 72%),
+                 radial-gradient(90% 80% at 50% 60%, rgba(0,0,0,${0.10 * glassIntensity}), transparent 78%)`,
     filter: "blur(2px)",
     mixBlendMode: "soft-light",
     opacity: Math.min(0.5, 0.35 * glassIntensity),
@@ -277,13 +360,12 @@ export default function LogoWithVideoMask({
     position: "absolute",
     inset: 0,
     ...commonMasked,
-    background:
-      `linear-gradient(115deg,
-        transparent 15%,
-        rgba(255,255,255,${0.10 * glassIntensity}) 28%,
-        rgba(255,255,255,${0.18 * glassIntensity}) 34%,
-        rgba(255,255,255,${0.10 * glassIntensity}) 40%,
-        transparent 55%)`,
+    background: `linear-gradient(115deg,
+      transparent 15%,
+      rgba(255,255,255,${0.10 * glassIntensity}) 28%,
+      rgba(255,255,255,${0.18 * glassIntensity}) 34%,
+      rgba(255,255,255,${0.10 * glassIntensity}) 40%,
+      transparent 55%)`,
     backgroundSize: "220% 220%",
     animation: "specSweep 4.6s ease-in-out infinite",
     mixBlendMode: "screen",
@@ -304,16 +386,17 @@ export default function LogoWithVideoMask({
     pointerEvents: "none",
   };
 
-  // Static fallback logo layer (always present behind video so it never looks empty)
   const fallbackLayer = (
-    <div style={{
-      position: "absolute",
-      inset: 0,
-      display: "grid",
-      placeItems: "center",
-      opacity: (ready && !videoErr) ? 0 : 1,
-      transition: `opacity ${fadeDuration}s ease`,
-    }}>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "grid",
+        placeItems: "center",
+        opacity: allReady && !videoErr && !prefersReducedMotion ? 0 : 1,
+        transition: `opacity ${fadeDuration}s ease`,
+      }}
+    >
       {logoSrc ? (
         <img
           src={logoSrc}
@@ -326,7 +409,6 @@ export default function LogoWithVideoMask({
     </div>
   );
 
-  /* ---------------- render ---------------- */
   return (
     <div style={wrapStyle} aria-hidden>
       <style>{`
@@ -352,15 +434,23 @@ export default function LogoWithVideoMask({
             ref={v0}
             playsInline
             muted
-            autoPlay
+            autoPlay={!prefersReducedMotion}
             preload="auto"
             poster={poster || undefined}
+            crossOrigin="anonymous"
             style={{ ...videoBase, opacity: 1 }}
             onError={() => setVideoErr(true)}
-            onLoadedData={() => { try { v0.current && (v0.current.style.opacity = "1"); } catch {} }}
+            onLoadedData={() => {
+              // ensure flags are on before any play() calls
+              const el = v0.current;
+              if (el) {
+                el.muted = true;
+                el.playsInline = true;
+              }
+            }}
           >
             {webmSrc ? <source src={webmSrc} type="video/webm" /> : null}
-            <source src={mp4Src} type="video/mp4" />
+            {mp4Src ? <source src={mp4Src} type="video/mp4" /> : null}
           </video>
 
           {/* Video B (for crossfade) */}
@@ -369,13 +459,21 @@ export default function LogoWithVideoMask({
               ref={v1}
               playsInline
               muted
-              autoPlay
+              autoPlay={!prefersReducedMotion}
               preload="auto"
+              crossOrigin="anonymous"
               onError={() => setVideoErr(true)}
+              onLoadedData={() => {
+                const el = v1.current;
+                if (el) {
+                  el.muted = true;
+                  el.playsInline = true;
+                }
+              }}
               style={videoBase}
             >
               {webmSrc ? <source src={webmSrc} type="video/webm" /> : null}
-              <source src={mp4Src} type="video/mp4" />
+              {mp4Src ? <source src={mp4Src} type="video/mp4" /> : null}
             </video>
           )}
         </div>
@@ -386,6 +484,21 @@ export default function LogoWithVideoMask({
             <div style={rimStyle} />
             <div style={sweepStyle} />
           </>
+        )}
+
+        {/* Gesture fallback if autoplay is blocked */}
+        {autoBlocked && (
+          <button
+            className="btn btn-outline-gold"
+            style={{ position: "absolute", bottom: 8, right: 8, zIndex: 3 }}
+            onClick={() => {
+              setAutoBlocked(false);
+              safePlay(v0.current);
+              if (crossfade) safePlay(v1.current);
+            }}
+          >
+            Play
+          </button>
         )}
       </div>
     </div>
