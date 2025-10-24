@@ -29,7 +29,7 @@ export default function Home() {
           <div style={{ margin: "16px 0 18px" }}>
             <LogoWithVideoMask
               logoSrc="/public/candle-no-stick.png"
-              mp4Src="/public/video/candlelight.mp4"
+              mp4Src="/video/candlelight.mp4"
               width="clamp(150px, 16vw, 220px)"
               aspect={1.55}
               glass
