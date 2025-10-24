@@ -1,41 +1,43 @@
 // src/lib/productsSupabase.js
 import supabase from "./supabaseClient.js";
 
-/* ---------- helpers ---------- */
+/* ---------------- utils ---------------- */
 const centsToAmount = (c) => (c ?? 0) / 100;
-const slugify = (s) => String(s ?? "")
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, "-")
-  .replace(/^-+|-+$/g, "");
 
 function parseMaybeJson(v) {
   if (Array.isArray(v) || v === null || typeof v === "object") return v;
   if (typeof v === "string") {
-    try { return JSON.parse(v); } catch {}
+    try { return JSON.parse(v); } catch {/* noop */}
   }
   return null;
 }
 
-/* Map only the fields the UI needs */
+/* ---------------- mapping ---------------- */
 function mapRow(row) {
-  const variantsRaw = parseMaybeJson(row.variants) ?? [];
-  const optionsRaw  = parseMaybeJson(row.options)  ?? [];
+  // Never reference undeclared identifiers — compute locally and use those.
+  const slug = row?.slug ?? null;
+  const handle = row?.handle ?? null;        // some older rows may still have this
+  const handleValue = slug ?? handle ?? null;
 
-  const variants = Array.isArray(variantsRaw) ? variantsRaw : [];
-  const options  = Array.isArray(optionsRaw)  ? optionsRaw  : [];
+  const variantsRaw = parseMaybeJson(row?.variants) ?? [];
+  const optionsRaw  = parseMaybeJson(row?.options)  ?? [];
+  const variants    = Array.isArray(variantsRaw) ? variantsRaw : [];
+  const options     = Array.isArray(optionsRaw)  ? optionsRaw  : [];
 
-  const variantPrices = variants.map(v => v.price_cents).filter(n => n != null);
-  const basePrices = variantPrices.length ? variantPrices : [row.price_cents ?? 0];
+  const variantPrices = variants
+    .map(v => v?.price_cents)
+    .filter((n) => typeof n === "number");
+  const basePrices = variantPrices.length ? variantPrices : [row?.price_cents ?? 0];
   const min = Math.min(...basePrices);
   const max = Math.max(...basePrices);
 
   return {
-    id: row.id,
-    title: row.title,
-    handle: row.slug ?? row.handle ?? null,
-    description: row.description || "",
-    collection: row.collection || "",
-    images: { nodes: row.image_url ? [{ url: row.image_url }] : [] },
+    id: row?.id ?? null,
+    title: row?.title ?? "",
+    handle: handleValue, // ← unified field the UI expects
+    description: row?.description || "",
+    collection: row?.collection || "",
+    images: { nodes: row?.image_url ? [{ url: row.image_url }] : [] },
 
     priceRange: {
       minVariantPrice: { amount: centsToAmount(min), currencyCode: "USD" },
@@ -43,155 +45,192 @@ function mapRow(row) {
     },
 
     variants: {
-      nodes: (variants || []).map((v) => {
-        const selectedOptions = Array.isArray(v.selectedOptions) && v.selectedOptions.length
-          ? v.selectedOptions
-          : [
-              v.wax  ? { name: "Wax",  value: String(v.wax) }   : null,
-              v.size ? { name: "Size", value: String(v.size) }  : null,
-            ].filter(Boolean);
-
-        const vid =
-          v.id ??
-          v.sku ??
-          `${row.id}:${slugify(
-            v.title || [v.wax, v.size].filter(Boolean).join(" / ") || "default"
-          )}`;
-
-        return {
-          id: vid,
-          title: v.title ?? (selectedOptions.length
-            ? selectedOptions.map(o => o.value).join(" / ")
+      nodes: variants.map((v, idx) => ({
+        id: v?.id ?? v?.sku ?? `${row?.id || "p"}:v${idx}`,
+        title:
+          v?.title ??
+          (Array.isArray(v?.selectedOptions) && v.selectedOptions.length
+            ? v.selectedOptions.map(o => o?.value).join(" / ")
             : "Default"),
-          availableForSale: v.availableForSale != null ? !!v.availableForSale : true,
-          price: {
-            amount: v.price_cents != null ? centsToAmount(v.price_cents) : null,
-            currencyCode: "USD",
-          },
-          selectedOptions,
-        };
-      }),
+        availableForSale:
+          v?.availableForSale != null ? !!v.availableForSale : true,
+        price: {
+          amount: v?.price_cents != null ? centsToAmount(v.price_cents) : null,
+          currencyCode: "USD",
+        },
+        selectedOptions: Array.isArray(v?.selectedOptions) ? v.selectedOptions : [],
+      })),
     },
 
-    options,
+    options: options,
+
     collections: {
-      nodes: row.collection
+      nodes: row?.collection
         ? [{ title: row.collection, handle: String(row.collection).toLowerCase() }]
         : [],
     },
-    tags: Array.isArray(row.tags) ? row.tags : [],
-    image_url: row.image_url || null,
-    price_cents: row.price_cents ?? null,
+
+    tags: Array.isArray(row?.tags) ? row.tags : [],
+    image_url: row?.image_url || null,
+    price_cents: row?.price_cents ?? null,
+    created_at: row?.created_at ?? null,
   };
 }
 
-/* timeout helper */
+/* ---------------- timeout helper ---------------- */
 async function withTimeout(promise, ms = 20000, label = "op") {
-  let t;
+  let timer;
   try {
-    return await Promise.race([
+    const raced = await Promise.race([
       promise,
-      new Promise((_, rej) => (t = setTimeout(() => rej(new Error(`[timeout] ${label} > ${ms}ms`)), ms))),
+      new Promise((_, rej) =>
+        (timer = setTimeout(() => rej(new Error(`[timeout] ${label} > ${ms}ms`)), ms))
+      ),
     ]);
+    return raced;
   } finally {
-    clearTimeout(t);
+    clearTimeout(timer);
   }
 }
 
-/* label map for collections */
-const LABEL_BY_KEY = {
-  affirmation: "Affirmation",
-  afrodisia:   "Afrodisia",
-  pantheon:    "Pantheon",
-  fall:        "Fall",
-  winter:      "Winter",
-};
+/* ---------------- list/search ---------------- */
+export async function searchProducts({
+  q = "",
+  collection = "all",
+  tags = [],
+  minPriceCents,
+  maxPriceCents,
+  order = "new",
+  page = 1,
+  pageSize = 24,
+} = {}) {
+  const from = Math.max(0, (page - 1) * pageSize);
+  const to   = from + pageSize - 1;
 
-/* ---------- list (light) ---------- */
-export async function fetchProductsFromSupabase({ query = "", collection = "all", limit = 60 } = {}) {
-  let q = supabase
-    .from("products")
-    .select("id, slug, handle, title, price_cents, image_url, collection, tags, created_at", { count: "planned" })
-    .order("created_at", { ascending: false, nullsLast: true })
-    .limit(limit);
+  let query = supabase.from("products").select("*", { count: "exact" });
+
+  if (q && q.trim()) {
+    const needle = `%${q.trim()}%`;
+    query = query.or(`title.ilike.${needle},description.ilike.${needle}`);
+  }
 
   if (collection && collection !== "all") {
+    const LABEL_BY_KEY = {
+      affirmation: "Affirmation",
+      afrodisia:   "Afrodisia",
+      pantheon:    "Pantheon",
+      fall:        "Fall",
+      winter:      "Winter",
+    };
     const label = LABEL_BY_KEY[collection] ?? collection;
-    q = q.eq("collection", label);
+    query = query.eq("collection", label);
   }
 
-  if (query && query.trim()) {
-    const needle = `%${query.trim()}%`;
-    q = q.ilike("title", needle); // title-only for speed
-  }
+  if (tags?.length) query = query.overlaps("tags", tags.map(t => t.toLowerCase()));
+  if (typeof minPriceCents === "number") query = query.gte("price_cents", minPriceCents);
+  if (typeof maxPriceCents === "number") query = query.lte("price_cents", maxPriceCents);
 
-  const { data, error } = await withTimeout(q, 20000, "products.list");
+  if (order === "price_asc")       query = query.order("price_cents", { ascending: true,  nullsLast: true });
+  else if (order === "price_desc") query = query.order("price_cents", { ascending: false, nullsLast: true });
+  else                             query = query.order("created_at",  { ascending: false, nullsLast: true });
+
+  query = query.range(from, to);
+
+  const { data, error, count } = await withTimeout(query, 20000, "products.search");
   if (error) throw error;
-  return (data || []).map(mapRow);
-}
-export const fetchProductsSupabase = (args) => fetchProductsFromSupabase(args);
 
-/* ---------- single by handle (kept for ProductDetail) ---------- */
-export async function fetchProductByHandleFromSupabase(handle) {
-   // treat "handle" as our slug
+  return { rows: (data || []).map(mapRow), total: count || 0, page, pageSize };
+}
+
+/* ---------------- single by slug (canonical) ---------------- */
+export async function fetchProductBySlugFromSupabase(slug) {
+  // Try the canonical column first
   const { data, error } = await supabase
     .from("products")
     .select("*")
-    .eq("slug", h)
+    .eq("slug", slug)
     .maybeSingle();
-
-  // Fallback to legacy "handle" column if slug didn’t hit
-  if ((!data && !error) || (error && error.code === "42703")) {
-    const res2 = await supabase
-      .from("products")
-      .select("id, slug, handle, title, description, price_cents, image_url, collection, tags, created_at, variants, options")
-      .eq("handle", handle)
-      .maybeSingle();
-    data = res2.data; error = res2.error;
-  }
 
   if (error) throw error;
   return data ? mapRow(data) : null;
 }
 
-/* ---------- search for grid (optimized) ---------- */
-export async function searchProducts({
-  q, collection, tags, minPriceCents, maxPriceCents, order = "new", page = 1, pageSize = 24,
-} = {}) {
-  const from = Math.max(0, (page - 1) * pageSize);
-  const to   = from + pageSize - 1;
-
-  let base = supabase
+/* ---------------- single by “legacy handle” fallback ---------------- */
+export async function fetchProductByLegacyHandle(handle) {
+  const { data, error } = await supabase
     .from("products")
-    .select("id, slug, handle, title, price_cents, image_url, collection, tags, created_at, variants, options", {
-      count: "planned", // fast estimate
-    });
+    .select("*")
+    .eq("handle", handle)
+    .maybeSingle();
 
-  if (collection && collection !== "all") {
-    const label = LABEL_BY_KEY[collection] ?? collection;
-    base = base.eq("collection", label);
-  }
-
-  if (q && q.trim()) {
-    const needle = `%${q.trim()}%`;
-    base = base.ilike("title", needle); // fast with trigram index
-  }
-
-  if (Array.isArray(tags) && tags.length) {
-    base = base.overlaps("tags", tags.map(t => String(t).toLowerCase()));
-  }
-
-  if (typeof minPriceCents === "number") base = base.gte("price_cents", minPriceCents);
-  if (typeof maxPriceCents === "number") base = base.lte("price_cents", maxPriceCents);
-
-  if (order === "price_asc")       base = base.order("price_cents", { ascending: true,  nullsLast: true });
-  else if (order === "price_desc") base = base.order("price_cents", { ascending: false, nullsLast: true });
-  else                             base = base.order("created_at",  { ascending: false, nullsLast: true });
-
-  base = base.range(from, to);
-
-  const { data, error, count } = await withTimeout(base, 20000, "products.search");
   if (error) throw error;
-
-  return { rows: (data || []).map(mapRow), total: count || 0, page, pageSize };
+  return data ? mapRow(data) : null;
 }
+
+/* ---------------- REST fallbacks (browser-friendly) ---------------- */
+const REST_BASE = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1`;
+const REST_KEY  = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+function restHeaders() {
+  return {
+    apikey: REST_KEY,
+    Authorization: `Bearer ${REST_KEY}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export async function fetchProductBySlugREST(slug) {
+  const url = `${REST_BASE}/products?select=*&slug=eq.${encodeURIComponent(slug)}&limit=1`;
+  const res = await fetch(url, { headers: restHeaders() });
+  if (!res.ok) throw new Error(`REST ${res.status}`);
+  const json = await res.json();
+  return json?.[0] ? mapRow(json[0]) : null;
+}
+
+/* (export name retained for callers that still import it) */
+export async function fetchProductByHandleFromSupabase(handleLike) {
+  // Treat incoming “handle” as slug first; then legacy handle
+  const asSlug = await fetchProductBySlugFromSupabase(handleLike);
+  if (asSlug) return asSlug;
+
+  // Legacy fallback
+  const asLegacy = await fetchProductByLegacyHandle(handleLike);
+  if (asLegacy) return asLegacy;
+
+  // REST fallback (in case RLS or client SDK trips)
+  return await fetchProductBySlugREST(handleLike);
+}
+
+export async function fetchProductsREST({ limit = 36, offset = 0 } = {}) {
+  const url = new URL(`${REST_BASE}/products`);
+  url.searchParams.set(
+    "select",
+    [
+      "id",
+      "slug",
+      "handle:slug", // expose slug under `handle` for legacy UI code
+      "title",
+      "price_cents",
+      "image_url",
+      "collection",
+      "tags",
+      "created_at",
+      "variants",
+      "options",
+    ].join(",")
+  );
+  url.searchParams.set("order", "created_at.desc.nullslast");
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
+
+  const res = await fetch(url.toString(), { headers: restHeaders() });
+  if (!res.ok) {
+    let body;
+    try { body = await res.json(); } catch { body = null; }
+    throw new Error(`REST ${res.status}${body?.message ? `: ${body.message}` : ""}`);
+  }
+  const json = await res.json();
+  return Array.isArray(json) ? json.map(mapRow) : [];
+}
+
+export { mapRow, withTimeout };

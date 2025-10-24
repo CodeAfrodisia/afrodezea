@@ -19,7 +19,7 @@ import StrengthBar from "../components/shop/StrengthBar.jsx";
 import GalleryZoom from "../components/shop/GalleryZoom.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 
-import { supabase } from "@lib/supabaseClient.js";
+import supabase from "@lib/supabaseClient.js";
 import { useAuth } from "@context/AuthContext.jsx";
 
 // code-split heavier widgets
@@ -72,18 +72,24 @@ export default function ProductDetail() {
 
   // Load product by handle / slug
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await fetchProductByHandleFromSupabase(handle);
-        if (alive) setProd(data);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [handle]);
+  let alive = true;
+  (async () => {
+    setLoading(true);
+    try {
+      const data = await fetchProductByHandleFromSupabase(handle);
+      if (!alive) return;
+      setProd(data ?? null);
+    } catch (e) {
+      console.error("[product] load error:", e);
+      if (!alive) return;
+      setProd(null);
+    } finally {
+      if (alive) setLoading(false);
+    }
+  })();
+  return () => { alive = false; };
+}, [handle]);
+
 
   // Load verified summary + recent verified whenever product changes
   useEffect(() => {
