@@ -368,23 +368,26 @@ export default function ProductsPage() {
   }, [query, activeCollection, tags.join("|"), min, max, order]);
 
   // ---------- Layout & measurement ----------
-const GAP = 24; // matches ProductsGrid gap
-const CARD_W = 300; // matches ProductsGrid min
+const GAP = 24;       // must match ProductsGrid gap
+const CARD_W = 300;   // should be >= the real min card width incl. borders
+const MAX_COLS = 3;   // ← cap columns so we don't overflow the right edge
+const SAFE = 16;      // ← little safety to account for padding/borders
 
 const gridWrapRef = useRef(null);
-const [columns, setColumns] = useState(4);
+const [columns, setColumns] = useState(3);
 
 const frameRef = useRef(null);
 const [isNarrow, setIsNarrow] = useState(false); // breakpoint ~980px
 
-// calculate column count based on gridWrapRef width
+// columns calc (with cap + safety margin)
 useEffect(() => {
   const el = gridWrapRef.current;
   if (!el || typeof ResizeObserver === "undefined") return;
 
   const calc = (width) => {
-    const w = width ?? el.clientWidth ?? 0;
-    const cols = Math.max(1, Math.floor((w + GAP) / (CARD_W + GAP)));
+    const usable = Math.max(0, (width ?? el.clientWidth ?? 0) - SAFE);
+    const raw = Math.floor((usable + GAP) / (CARD_W + GAP));
+    const cols = Math.max(1, Math.min(MAX_COLS, raw));
     setColumns(cols);
   };
 
@@ -394,7 +397,6 @@ useEffect(() => {
   return () => ro.disconnect();
 }, []);
 
-// detect narrow layout breakpoint
 useEffect(() => {
   const el = frameRef.current;
   if (!el || typeof ResizeObserver === "undefined") return;
@@ -419,6 +421,7 @@ useLayoutEffect(() => {
 
 const start = (slide - 1) * perSlide;
 const visible = (rows || []).slice(start, start + perSlide);
+
 
 return (
   <>
@@ -461,7 +464,6 @@ return (
     <div
   ref={frameRef}
   style={{
-    /* 2-column grid on desktop, stacked on small screens */
     display: "grid",
     gridTemplateColumns: isNarrow ? "1fr" : "280px minmax(0, 1fr)",
     gap: 24,
@@ -481,6 +483,7 @@ return (
       alignSelf: "start",
       maxHeight: isNarrow ? "none" : "calc(var(--vh) - 16px - 16px - 1px)",
       overflow: isNarrow ? "visible" : "auto",
+      zIndex: 2, // always paint above main if anything ever touches
     }}
   >
     <div className="surface" style={{ padding: 12 }}>
@@ -522,9 +525,12 @@ return (
   {/* Main */}
   <main
     style={{
-      minWidth: 0,              // let grid item shrink; prevents overlap
+      minWidth: 0,             // allow shrinking within grid
       display: "flex",
       flexDirection: "column",
+      overflowX: "clip",       // ⬅️ fence: prevent grid/cards from painting under the sidebar
+      overflowY: "visible",
+      zIndex: 1,
     }}
   >
     {/* Header / result count */}

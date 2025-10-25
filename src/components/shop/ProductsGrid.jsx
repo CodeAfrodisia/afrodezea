@@ -9,18 +9,20 @@ export default function ProductsGrid({
   cardMin = 300,
   gap = 24,
 }) {
+  const min = Math.max(200, Number(cardMin) || 300); // safety lower bound
+
   return (
     <div
-      /* remove className="container" or override its padding */
       style={{
         display: "grid",
-        gridTemplateColumns: `repeat(${columns}, minmax(${cardMin}px, ${cardMin}px))`,
+        gridTemplateColumns: `repeat(auto-fit, minmax(${cardMin}px, 1fr))`,
+ // ← flex to container
         gap,
-        rowGap: 24,
-        justifyContent: "center",
-        padding: 0,           // 🔴 important: no side padding
-        boxSizing: "border-box",
+        alignItems: "start",
+        justifyItems: "stretch",
+        width: "100%",
         maxWidth: "100%",
+        boxSizing: "border-box",
       }}
     >
       {products.map((p) => (
@@ -34,5 +36,3 @@ export default function ProductsGrid({
     </div>
   );
 }
-
-
