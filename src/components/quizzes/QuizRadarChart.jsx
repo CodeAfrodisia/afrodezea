@@ -1,6 +1,7 @@
 // src/components/quizzes/QuizRadarChart.jsx
-import React, { useMemo, useRef, useEffect } from "react";
+import React, { useMemo, useRef, useEffect, useLayoutEffect, useState } from "react";
 import {
+  ResponsiveContainer,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   Radar, Tooltip, Legend,
 } from "recharts";
@@ -12,7 +13,6 @@ function getThemeName() {
 }
 
 function getPalette(theme) {
-  // Safe defaults for SSR or if CSS vars are missing
   const hasDoc = typeof document !== "undefined";
   let wine = "#301727";
   let gold = "rgb(212 175 55)";
@@ -40,14 +40,14 @@ function getPalette(theme) {
     };
   }
 
-  // cream (light) defaults
+  // cream (light)
   return {
     bgGradientTop: "#F5EFE7",
     bgGradientBottom: "#EEE6DC",
-    axisText: "#2A1C1C",                 // espresso
+    axisText: "#2A1C1C",
     ticks: "rgba(42,28,28,.70)",
     grid: "rgba(42,28,28,.20)",
-    stroke: "rgba(42,28,28,.55)",        // darker than grid
+    stroke: "rgba(42,28,28,.55)",
     fill: `color-mix(in srgb, ${wine} 22%, transparent)`,
     baselineStroke: "rgba(42,28,28,.50)",
     baselineFill: "rgba(42,28,28,.06)",
@@ -66,14 +66,7 @@ function AngleTick({ payload, x, y, color, fontSize }) {
     lines = [raw.slice(0, i), raw.slice(i + 1)];
   }
   return (
-    <text
-      x={x}
-      y={y}
-      textAnchor="middle"
-      fill={color}
-      fontSize={fontSize}
-      style={{ pointerEvents: "none" }}
-    >
+    <text x={x} y={y} textAnchor="middle" fill={color} fontSize={fontSize} style={{ pointerEvents: "none" }}>
       {lines.map((line, idx) => (
         <tspan key={idx} x={x} dy={idx === 0 ? 0 : fontSize * 0.95}>
           {line}
@@ -117,14 +110,29 @@ function QuizRadarChartInner({
   labels = {},
   title,
   subtitle,
+  // height/width are now treated as *preferred* sizes; the chart will fit its container
   height = 360,
   width = 360,
   showLegend = false,
   allowDownload = true,
   onOpenModal,
 }) {
-  const chartRef = useRef(null);
+  const frameRef = useRef(null);     // the square "bed"
+  const chartRef = useRef(null);     // outer card
   const menuRef  = useRef(null);
+
+  // live container size for font scaling
+  const [boxW, setBoxW] = useState(width || 360);
+
+  useLayoutEffect(() => {
+    if (!frameRef.current || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      if (r && r.width) setBoxW(Math.max(200, Math.floor(r.width)));
+    });
+    ro.observe(frameRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   // close the download menu when clicking outside or pressing Esc
   useEffect(() => {
@@ -150,9 +158,9 @@ function QuizRadarChartInner({
   const theme = getThemeName();
   const colors = getPalette(theme);
 
-  // Scaled type ramp for readability
-  const fsBase = Math.max(14, Math.round((Number(width) || 360) * 0.045));   // angle labels
-  const fsTicks = Math.max(12, Math.round(fsBase * 0.85));                   // rings
+  // Scaled type ramp based on container width
+  const fsBase  = Math.max(12, Math.round(boxW * 0.04));  // angle labels
+  const fsTicks = Math.max(11, Math.round(fsBase * 0.85)); // rings
 
   const hasRaw =
     totalsRaw && typeof totalsRaw === "object" &&
@@ -243,7 +251,6 @@ function QuizRadarChartInner({
       canvas.height = Math.max(1, Math.floor(h * scale));
       const ctx = canvas.getContext("2d");
 
-      // Theme-appropriate background for exported PNG
       const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
       g.addColorStop(0, colors.bgGradientTop);
       g.addColorStop(1, colors.bgGradientBottom);
@@ -306,7 +313,6 @@ function QuizRadarChartInner({
         color: "var(--c-ink)",
       }}
       onClick={(e) => {
-        // avoid clicks from the Download menu/summary/buttons
         if (e.target.closest("details")) return;
         if (e.target.closest("button")) return;
         onOpenModal?.();
@@ -324,18 +330,13 @@ function QuizRadarChartInner({
         >
           <div>
             {title ? <h3 style={{ margin: 0 }}>{title}</h3> : null}
-            {subtitle ? (
-              <div style={{ opacity: 0.75, fontSize: 14 }}>{subtitle}</div>
-            ) : null}
+            {subtitle ? <div style={{ opacity: 0.75, fontSize: 14 }}>{subtitle}</div> : null}
           </div>
 
           {allowDownload && hasData ? (
             <div style={{ position: "relative" }}>
               <details ref={menuRef}>
-                <summary
-                  className="btn btn--ghost"
-                  onClick={(e) => e.stopPropagation()}
-                >
+                <summary className="btn btn--ghost" onClick={(e) => e.stopPropagation()}>
                   Download
                 </summary>
                 <div
@@ -346,25 +347,16 @@ function QuizRadarChartInner({
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <button
-                    className="btn btn--ghost"
-                    style={{ width: "100%", justifyContent: "flex-start" }}
-                    onClick={() => { downloadPNG(2); if (menuRef.current) menuRef.current.open = false; }}
-                  >
+                  <button className="btn btn--ghost" style={{ width: "100%", justifyContent: "flex-start" }}
+                          onClick={() => { downloadPNG(2); if (menuRef.current) menuRef.current.open = false; }}>
                     PNG
                   </button>
-                  <button
-                    className="btn btn--ghost"
-                    style={{ width: "100%", justifyContent: "flex-start" }}
-                    onClick={() => { downloadSVG(); if (menuRef.current) menuRef.current.open = false; }}
-                  >
+                  <button className="btn btn--ghost" style={{ width: "100%", justifyContent: "flex-start" }}
+                          onClick={() => { downloadSVG(); if (menuRef.current) menuRef.current.open = false; }}>
                     SVG
                   </button>
-                  <button
-                    className="btn btn--ghost"
-                    style={{ width: "100%", justifyContent: "flex-start" }}
-                    onClick={() => { downloadCSV(); if (menuRef.current) menuRef.current.open = false; }}
-                  >
+                  <button className="btn btn--ghost" style={{ width: "100%", justifyContent: "flex-start" }}
+                          onClick={() => { downloadCSV(); if (menuRef.current) menuRef.current.open = false; }}>
                     CSV
                   </button>
                 </div>
@@ -374,70 +366,82 @@ function QuizRadarChartInner({
         </div>
       )}
 
-      <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
-        <RadarChart
-          width={typeof width === "number" ? width : 360}
-          height={typeof height === "number" ? height : 360}
-          cx="50%"
-          cy="52%"
-          outerRadius="72%"
-          margin={{ left: 28, right: 28, top: 12, bottom: 16 }}
-          data={chartData.rows}
-        >
-          <PolarGrid stroke={colors.grid} strokeOpacity={1} gridType="polygon" />
+      {/* Responsive square bed — prevents overflow and collisions */}
+      <div
+        ref={frameRef}
+        className="chart-bed"
+        style={{
+          width: "100%",
+          aspectRatio: "1 / 1",        // responsive square
+          padding: 10,                  // keep labels inside the card
+          boxSizing: "border-box",
+          overflow: "hidden",           // clip any stray labels
+        }}
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart
+            cx="50%"
+            cy="50%"
+            /* slightly smaller radius to keep labels inside on laptops */
+            outerRadius="84%"
+            margin={{ left: 8, right: 8, top: 8, bottom: 8 }}
+            data={chartData.rows}
+          >
+            <PolarGrid stroke={colors.grid} strokeOpacity={1} gridType="polygon" />
 
-          <PolarAngleAxis
-            dataKey="subject"
-            tick={<AngleTick color={colors.axisText} fontSize={fsBase} />}
-            tickMargin={16}
-            axisLine={false}
-          />
+            <PolarAngleAxis
+              dataKey="subject"
+              tick={<AngleTick color={colors.axisText} fontSize={fsBase} />}
+              tickMargin={12}
+              axisLine={false}
+            />
 
-          <PolarRadiusAxis
-            angle={30}
-            domain={[0, chartData.yDomainMax]}
-            tick={{ fill: colors.ticks, fontSize: fsTicks }}
-            tickCount={6}
-            axisLine={false}
-            stroke={colors.grid}
-          />
+            <PolarRadiusAxis
+              angle={30}
+              domain={[0, chartData.yDomainMax]}
+              tick={{ fill: colors.ticks, fontSize: fsTicks }}
+              tickCount={6}
+              axisLine={false}
+              stroke={colors.grid}
+            />
 
-          <Tooltip
-            contentStyle={{
-              background: colors.tooltipBg,
-              border: "1px solid var(--c-border-subtle)",
-              borderRadius: 10,
-              color: colors.tooltipInk,
-            }}
-            labelStyle={{ color: colors.tooltipHead, fontWeight: 600 }}
-            itemStyle={{ color: colors.tooltipInk }}
-            formatter={(v, _name, props) => [v, props?.payload?.subject || "Score"]}
-          />
+            <Tooltip
+              contentStyle={{
+                background: colors.tooltipBg,
+                border: "1px solid var(--c-border-subtle)",
+                borderRadius: 10,
+                color: colors.tooltipInk,
+              }}
+              labelStyle={{ color: colors.tooltipHead, fontWeight: 600 }}
+              itemStyle={{ color: colors.tooltipInk }}
+              formatter={(v, _name, props) => [v, props?.payload?.subject || "Score"]}
+            />
 
-          {showLegend ? (
-            <Legend iconType="circle" wrapperStyle={{ color: colors.axisText }} />
-          ) : null}
+            {showLegend ? (
+              <Legend iconType="circle" wrapperStyle={{ color: colors.axisText }} />
+            ) : null}
 
-          {chartData.rows.some((d) => d.baselineValue > 0) && (
+            {chartData.rows.some((d) => d.baselineValue > 0) && (
+              <Radar
+                name="Baseline"
+                dataKey="baselineValue"
+                stroke={colors.baselineStroke}
+                fill={colors.baselineFill}
+                fillOpacity={1}
+                strokeWidth={2}
+              />
+            )}
+
             <Radar
-              name="Baseline"
-              dataKey="baselineValue"
-              stroke={colors.baselineStroke}
-              fill={colors.baselineFill}
+              name="You"
+              dataKey="value"
+              stroke={colors.stroke}
+              fill={colors.fill}
               fillOpacity={1}
               strokeWidth={2}
             />
-          )}
-
-          <Radar
-            name="You"
-            dataKey="value"
-            stroke={colors.stroke}
-            fill={colors.fill}
-            fillOpacity={1}
-            strokeWidth={2}
-          />
-        </RadarChart>
+          </RadarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );

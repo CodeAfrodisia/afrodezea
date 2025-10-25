@@ -8,33 +8,39 @@ if (!url || !key) {
   console.warn("[supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
 }
 
-// 👉 export these so REST helpers can use them
+// Expose for any REST helpers that need them
 export const SUPABASE_URL = url;
 export const SUPABASE_ANON_KEY = key;
 
-// Use localStorage for mobile reliability (Firefox, Safari)
+/**
+ * Auth configuration notes (reliability):
+ * - `flowType: "implicit"` enables cross-device magic links reliably (PKCE requires same device that initiated).
+ * - `persistSession: true` + localStorage is safest on Safari/Firefox.
+ * - `detectSessionInUrl: true` lets Supabase parse auth params on any route.
+ * - `multiTab: true` keeps sessions in sync across tabs/windows.
+ * - Consider setting `redirectTo` when sending magic links to /auth/callback.
+ */
 const supabase = createClient(url, key, {
   auth: {
+    flowType: "implicit",          // <- switch from PKCE to support opening links on another device/browser
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    flowType: "pkce",
+    multiTab: true,
     storage: typeof window !== "undefined" ? localStorage : undefined,
+    // Optional: custom key so staging/prod don’t collide
+    storageKey: import.meta.env.VITE_SUPABASE_STORAGE_KEY || "sb-afrodezea-auth",
   },
   global: {
     headers: { "x-client-info": "afrodezea-web" },
   },
 });
 
-if (import.meta.env.MODE === "development") {
+// Dev/debug convenience
+if (typeof window !== "undefined" && import.meta?.env?.DEV) {
   window.__supabase = supabase;
+  window.supabase = supabase;
 }
 
 export default supabase;
-// keep named export for places that do `import { supabase } ...`
 export { supabase };
-
-// OPTIONAL (dev only): expose for console debugging
-if (typeof window !== "undefined" && import.meta?.env?.DEV) {
-  window.supabase = supabase;
-}

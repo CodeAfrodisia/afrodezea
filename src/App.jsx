@@ -1,14 +1,21 @@
 // src/App.jsx
-import React, { lazy, Suspense } from "react";
-import { Routes, Route, Navigate, Link, useParams, NavLink } from "react-router-dom";
-import Profile from "./pages/Profile.jsx";
+import React, { lazy, Suspense, useEffect } from "react";
+import {
+  Routes,
+  Route,
+  Navigate,
+  Link,
+  useParams,
+  NavLink,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+
+import { Helmet } from "react-helmet-async";
 
 import { useCart } from "./context/CartContext.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import { useWishlist } from "./context/WishlistContext.jsx";
-
-import { Helmet } from "react-helmet-async";
-import { SITE_URL, getSiteOrigin, isPreviewEnv } from "./lib/site.js";
 
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import PageBoundary from "./components/PageBoundary.jsx";
@@ -19,7 +26,6 @@ import CheckIn from "@pages/CheckIn.jsx";
 
 import ProfilePage from "@pages/ProfilePage.jsx";
 import CartDrawer from "./components/shop/CartDrawer.jsx";
-import PublicFavorites from "@components/account/PublicFavorites.jsx";
 import ProfileNavLink from "@components/nav/ProfileNavLink.jsx";
 
 import QuizzesHub from "@components/quizzes/QuizzesHub.jsx";
@@ -28,8 +34,12 @@ import QuizTakePage from "@pages/QuizTakePage.jsx";
 import ThemeToggle from "@components/ThemeToggle.jsx";
 import FooterSmart from "@components/layout/FooterSmart.jsx";
 
-// 🌿 NEW: dynamic viewport + footer observer
+// 🌿 dynamic viewport + footer observer
 import useViewportChrome from "@lib/useViewportChrome.js";
+
+// Optional helpers
+import { isPreviewEnv } from "./lib/site.js";
+import supabase from "@lib/supabaseClient.js";
 
 // Lazy pages
 const Home = lazy(() => import("./pages/Home.jsx"));
@@ -97,9 +107,68 @@ function LegacyQuizRedirect() {
   return <Navigate to={`/quizzes/${slug}`} replace />;
 }
 
+/**
+ * MagicLinkHandler
+ * - Catches supabase auth redirects on /auth/callback (or any route if detectSessionInUrl matched)
+ * - Waits briefly for session hydration, then forwards to the intended page or /account.
+ */
+function MagicLinkHandler() {
+  const navigate = useNavigate();
+  const { ready } = useAuth();
+  const { search, hash } = useLocation();
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      // Let supabase parse the URL (already on by client option) and hydrate storage.
+      // We simply poll for a valid session for a short moment, then move on.
+      const waitForSession = async (tries = 12) => {
+        for (let i = 0; i < tries; i++) {
+          const { data } = await supabase.auth.getSession();
+          if (data?.session) return data.session;
+          await new Promise((r) => setTimeout(r, 150)); // ~1.8s max
+        }
+        return null;
+      };
+
+      await waitForSession();
+
+      // Optional: remove auth params from the URL bar
+      // (so refreshes don’t try to re-handle the callback)
+      if (alive && (search || hash)) {
+        const clean = window.location.pathname;
+        window.history.replaceState({}, "", clean);
+      }
+
+      // Go where logged-in folks usually go
+      if (alive) navigate("/account", { replace: true });
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [navigate, ready, search, hash]);
+
+  return (
+    <div style={{ padding: 24, opacity: 0.9 }}>
+      Signing you in…
+    </div>
+  );
+}
+
 export default function App() {
   // 🌿 Hook in the viewport + footer variable updater
   useViewportChrome(".shop-footer");
+
+  // Keep multi-tab sessions extra robust — listen and no-op (forces app to re-render where contexts do)
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      // no-op; your AuthContext should already be listening internally
+      // leaving this here ensures a React change tick in simple setups
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   return (
     <>
@@ -143,6 +212,9 @@ export default function App() {
         <ErrorBoundary>
           <Suspense fallback={<div style={{ padding: 24, opacity: 0.8 }}>Loading…</div>}>
             <Routes>
+              {/* Auth callback catcher */}
+              <Route path="/auth/callback" element={<MagicLinkHandler />} />
+
               <Route
                 path="/"
                 element={
@@ -214,6 +286,7 @@ export default function App() {
                 }
               />
 
+              {/* Admin */}
               <Route
                 path="/admin"
                 element={
@@ -237,7 +310,7 @@ export default function App() {
           </Suspense>
         </ErrorBoundary>
 
-        {/* Smart Footer — now tied to viewport hook */}
+        {/* Smart Footer — tied to viewport hook */}
         <FooterSmart className="shop-footer" />
 
         <CartDrawer />
