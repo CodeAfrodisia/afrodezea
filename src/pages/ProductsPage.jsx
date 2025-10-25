@@ -496,6 +496,22 @@ return (
         }}
       />
     </div>
+
+      <div
+  className="text-muted"
+  style={{
+    padding: "6px 4px 0",
+    fontSize: 14,
+    opacity: 0.85,
+  }}
+>
+  {loading ? "Loading…" : `${total} result${total === 1 ? "" : "s"}`}
+  {query ? ` for “${query}”` : ""}
+  {activeCollection !== "all" ? ` in ${activeCollection}` : ""}
+</div>
+
+<div style={{ height: 12 }} />
+
     <div style={{ height: 12 }} />
     <div className="surface" style={{ padding: 12 }}>
       <Filters
@@ -533,12 +549,7 @@ return (
       zIndex: 1,
     }}
   >
-    {/* Header / result count */}
-    <div style={{ opacity: 0.85, marginBottom: 8 }}>
-      {loading ? "Loading…" : `${total} result${total === 1 ? "" : "s"}`}
-      {query ? ` for “${query}”` : ""}
-      {activeCollection !== "all" ? ` in ${activeCollection}` : ""}
-    </div>
+ 
 
     <div style={{ position: "relative", flex: "1 1 auto" }}>
       {loading ? (

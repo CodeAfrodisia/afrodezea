@@ -1,3 +1,4 @@
+// src/components/shop/ProductsGrid.jsx
 import React from "react";
 import ProductCard from "./ProductCard.jsx";
 
@@ -6,32 +7,39 @@ export default function ProductsGrid({
   onQuickView,
   fromSearch,
   columns = 3,
-  cardMin = 300,
+  cardMin = 300, // fixed card width
   gap = 24,
 }) {
-  const min = Math.max(200, Number(cardMin) || 300); // safety lower bound
-
   return (
     <div
       style={{
+        /* fixed-width columns so single/last items never stretch */
         display: "grid",
-        gridTemplateColumns: `repeat(auto-fit, minmax(${cardMin}px, 1fr))`,
- // ← flex to container
+        gridTemplateColumns: `repeat(${columns}, ${cardMin}px)`,
+        gridAutoRows: "max-content",
         gap,
-        alignItems: "start",
-        justifyItems: "stretch",
+        rowGap: 24,
+
+        /* keep the grid aligned to the left; don’t center on short rows */
+        justifyContent: "start",
+        alignContent: "start",
+
+        /* container hygiene */
+        padding: 0,
+        boxSizing: "border-box",
         width: "100%",
         maxWidth: "100%",
-        boxSizing: "border-box",
+        overflow: "visible",
       }}
     >
       {products.map((p) => (
-        <ProductCard
-          key={p.id}
-          product={p}
-          onQuickView={onQuickView}
-          fromSearch={fromSearch}
-        />
+        <div key={p.id} style={{ width: cardMin }}>
+          <ProductCard
+            product={p}
+            onQuickView={onQuickView}
+            fromSearch={fromSearch}
+          />
+        </div>
       ))}
     </div>
   );
