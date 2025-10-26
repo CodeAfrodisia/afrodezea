@@ -4,12 +4,12 @@ import { NavLink } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 export default function AccountLink() {
-  const { user, authLoading: loading } = useAuth();
-  if (loading) return null;
+  const { user, loading } = useAuth(); // ← unified flag
+  if (loading) {
+    // Optionally render a tiny placeholder to prevent layout shift
+    return <span style={{ opacity: 0.6 }}>…</span>;
+  }
 
-  
-
-  // When signed in, keep this active for /account and any nested routes (no `end`)
   return user ? (
     <NavLink
       to="/account"

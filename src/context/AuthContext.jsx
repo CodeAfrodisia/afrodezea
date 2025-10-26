@@ -8,19 +8,20 @@ const AuthCtx = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true); // source of truth
 
   // Boot from cached session once
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      const bootUser = data?.session?.user ?? null;
-      console.log("[auth] boot session:", bootUser
-        ? { userId: bootUser.id, exp: data.session.expires_at }
-        : null);
-      if (!cancelled) setUser(bootUser);
-      if (!cancelled) setAuthLoading(false);
+      try {
+        const { data } = await supabase.auth.getSession();
+        const bootUser = data?.session?.user ?? null;
+        console.log("[auth] boot session:", bootUser ? { userId: bootUser.id, exp: data.session.expires_at } : null);
+        if (!cancelled) setUser(bootUser);
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -29,19 +30,11 @@ export function AuthProvider({ children }) {
   async function ensureProfileRow(u) {
     if (!u?.id) return;
     try {
-      // wait for a fresh session so Authorization header is definitely attached
       const { data: { session } } = await supabase.auth.getSession();
       console.log("[profiles upsert] jwt present?", !!session?.access_token);
-
       const payload = { user_id: u.id }; // do NOT send `id`
-      const { error } = await supabase
-        .from("profiles")
-        .upsert(payload, { onConflict: "user_id" });
-      if (error) {
-        console.error("[profiles upsert] failed:", error);
-      } else {
-        console.log("[profiles upsert] ok for", u.id);
-      }
+      const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
+      if (error) console.error("[profiles upsert] failed:", error);
     } catch (e) {
       console.error("[profiles upsert] exception:", e);
     }
@@ -50,17 +43,12 @@ export function AuthProvider({ children }) {
   // React to auth changes
   useEffect(() => {
     let mounted = true;
-
     const { data: listener } = supabase.auth.onAuthStateChange(async (evt, session) => {
       const u = session?.user ?? null;
       console.log("[auth] onAuthStateChange:", evt, u?.id || null);
       if (mounted) setUser(u);
       if (!u) return;
-
-      // 1) Create/keep profile row (RLS-safe)
       await ensureProfileRow(u);
-
-      // 2) Ensure handle (best-effort)
       try {
         const h = await ensureProfileHandle(u);
         console.log("[profiles handle] ensured:", h);
@@ -68,19 +56,18 @@ export function AuthProvider({ children }) {
         console.warn("[profiles handle] failed:", e?.message || e);
       }
     });
-
     return () => {
-      mounted = false;
       try { listener?.subscription?.unsubscribe?.(); } catch {}
+      mounted = false;
     };
   }, []);
 
-  // Redirect used for magic link / OAuth
+  // Redirect used for magic link / OAuth → come back to /login so we can exchange tokens
   const AUTH_REDIRECT = `${getSiteOrigin()}/login`;
 
   async function signInEmail(email) {
     console.log("[auth] signInEmail → redirect:", AUTH_REDIRECT);
-    const { data, error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: AUTH_REDIRECT },
     });
@@ -90,7 +77,6 @@ export function AuthProvider({ children }) {
       });
       throw error;
     }
-    console.log("[auth] magic link sent:", data);
   }
 
   async function signInOAuth(provider) {
@@ -112,8 +98,16 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
+  // Expose a consistent `loading` flag; keep `authLoading` for any legacy usage.
   const value = useMemo(
-    () => ({ user, authLoading, signInEmail, signInOAuth, signOut }),
+    () => ({
+      user,
+      loading: authLoading,
+      authLoading,
+      signInEmail,
+      signInOAuth,
+      signOut,
+    }),
     [user, authLoading]
   );
 
