@@ -1,4 +1,3 @@
-// src/context/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "@lib/supabaseClient.js";
 import { ensureProfileHandle } from "@lib/ensureProfileHandle.js";
@@ -8,47 +7,39 @@ const AuthCtx = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true); // source of truth
+  const [authLoading, setAuthLoading] = useState(true);
 
-  // Boot from cached session once
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const bootUser = data?.session?.user ?? null;
-        console.log("[auth] boot session:", bootUser ? { userId: bootUser.id, exp: data.session.expires_at } : null);
-        if (!cancelled) setUser(bootUser);
-      } finally {
-        if (!cancelled) setAuthLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Helper: create/keep profile row (no `id`, conflict on `user_id`)
-  async function ensureProfileRow(u) {
-    if (!u?.id) return;
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log("[profiles upsert] jwt present?", !!session?.access_token);
-      const payload = { user_id: u.id }; // do NOT send `id`
-      const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
-      if (error) console.error("[profiles upsert] failed:", error);
-    } catch (e) {
-      console.error("[profiles upsert] exception:", e);
-    }
-  }
-
-  // React to auth changes
+  // Subscribe FIRST so we catch INITIAL_SESSION reliably,
+  // then query getSession in parallel. Add a small failsafe timer.
   useEffect(() => {
     let mounted = true;
+    const killSwitch = setTimeout(() => {
+      if (mounted) {
+        console.warn("[auth] load failsafe tripped — forcing ready");
+        setAuthLoading(false);
+      }
+    }, 3000);
+
     const { data: listener } = supabase.auth.onAuthStateChange(async (evt, session) => {
       const u = session?.user ?? null;
       console.log("[auth] onAuthStateChange:", evt, u?.id || null);
-      if (mounted) setUser(u);
+      if (!mounted) return;
+      setUser(u);
+
+      // As soon as we know anything about the session, we’re ready.
+      setAuthLoading(false);
+
       if (!u) return;
-      await ensureProfileRow(u);
+      try {
+        // Make sure profile exists (conflict on user_id)
+        const { data: { session: fresh } } = await supabase.auth.getSession();
+        console.log("[profiles upsert] jwt present?", !!fresh?.access_token);
+        const { error } = await supabase.from("profiles").upsert({ user_id: u.id }, { onConflict: "user_id" });
+        if (error) console.error("[profiles upsert] failed:", error);
+      } catch (e) {
+        console.error("[profiles upsert] exception:", e);
+      }
+
       try {
         const h = await ensureProfileHandle(u);
         console.log("[profiles handle] ensured:", h);
@@ -56,13 +47,28 @@ export function AuthProvider({ children }) {
         console.warn("[profiles handle] failed:", e?.message || e);
       }
     });
+
+    // Also request current session (this resolves quickly when cached)
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const bootUser = data?.session?.user ?? null;
+        console.log("[auth] boot session:", bootUser ? { userId: bootUser.id, exp: data.session.expires_at } : null);
+        if (!mounted) return;
+        setUser(bootUser);
+        setAuthLoading(false); // in case INITIAL_SESSION is delayed
+      } catch {
+        if (mounted) setAuthLoading(false);
+      }
+    })();
+
     return () => {
-      try { listener?.subscription?.unsubscribe?.(); } catch {}
       mounted = false;
+      clearTimeout(killSwitch);
+      try { listener?.subscription?.unsubscribe?.(); } catch {}
     };
   }, []);
 
-  // Redirect used for magic link / OAuth → come back to /login so we can exchange tokens
   const AUTH_REDIRECT = `${getSiteOrigin()}/login`;
 
   async function signInEmail(email) {
@@ -72,23 +78,16 @@ export function AuthProvider({ children }) {
       options: { emailRedirectTo: AUTH_REDIRECT },
     });
     if (error) {
-      console.error("[auth] signInWithOtp failed:", {
-        status: error.status, name: error.name, message: error.message,
-      });
+      console.error("[auth] signInWithOtp failed:", { status: error.status, name: error.name, message: error.message });
       throw error;
     }
   }
 
   async function signInOAuth(provider) {
     console.log("[auth] signInOAuth →", provider, "redirect:", AUTH_REDIRECT);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: AUTH_REDIRECT },
-    });
+    const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: AUTH_REDIRECT } });
     if (error) {
-      console.error("[auth] signInWithOAuth failed:", {
-        status: error.status, name: error.name, message: error.message,
-      });
+      console.error("[auth] signInWithOAuth failed:", { status: error.status, name: error.name, message: error.message });
       throw error;
     }
   }
@@ -98,16 +97,8 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
-  // Expose a consistent `loading` flag; keep `authLoading` for any legacy usage.
   const value = useMemo(
-    () => ({
-      user,
-      loading: authLoading,
-      authLoading,
-      signInEmail,
-      signInOAuth,
-      signOut,
-    }),
+    () => ({ user, loading: authLoading, authLoading, signInEmail, signInOAuth, signOut }),
     [user, authLoading]
   );
 

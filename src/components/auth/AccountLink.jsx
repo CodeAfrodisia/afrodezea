@@ -1,14 +1,10 @@
-// src/components/auth/AccountLink.jsx
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 export default function AccountLink() {
-  const { user, loading } = useAuth(); // ← unified flag
-  if (loading) {
-    // Optionally render a tiny placeholder to prevent layout shift
-    return <span style={{ opacity: 0.6 }}>…</span>;
-  }
+  const { user, loading } = useAuth();
+  if (loading) return null; // ← remove the ellipsis placeholder
 
   return user ? (
     <NavLink
