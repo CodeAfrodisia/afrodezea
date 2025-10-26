@@ -1,8 +1,8 @@
 // src/pages/Login.jsx
-import React, { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthContext.jsx";
+import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient.js";
+import { useAuth } from "../context/AuthContext.jsx";
 
 export default function Login() {
   const { signInEmail } = useAuth();
@@ -11,88 +11,84 @@ export default function Login() {
 
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
-  const [status, setStatus] = useState("idle"); // idle | working | done | error
-  const [msg, setMsg] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [err, setErr] = useState("");
 
-  const redirectTo = loc.state?.from?.pathname || "/account";
+  const qs = useMemo(() => new URLSearchParams(loc.search), [loc.search]);
 
-  // Handle magic-link / OAuth callbacks and late auth events
+  // After successful verification, send the user where they came from (or /account)
+  function goNext() {
+    const next = qs.get("next");
+    const from = (loc.state && loc.state.from && loc.state.from.pathname) || null;
+    nav(next || from || "/account", { replace: true });
+  }
+
   useEffect(() => {
-    let mounted = true;
+    // Handle Supabase magic-link redirects:
+    // v2 PKCE: ?code=... (preferred)
+    // legacy / some tenants: ?token_hash=...&type=magiclink&email=...
+    (async () => {
+      const code = qs.get("code");
+      const tokenHash = qs.get("token_hash");
+      const type = (qs.get("type") || "").toLowerCase();
+      const emailInUrl = qs.get("email") || "";
 
-    async function run() {
-      setStatus("working");
+      // explicit error from GoTrue
+      const urlErr = qs.get("error_description") || qs.get("error");
+      if (urlErr) {
+        setErr(decodeURIComponent(urlErr));
+        return;
+      }
+
+      if (!code && !tokenHash) return; // nothing to verify
+
+      setVerifying(true);
+      setErr("");
+
       try {
-        // 1) Already have a session? Go to account.
-        const { data: s1 } = await supabase.auth.getSession();
-        if (mounted && s1?.session) {
-          setStatus("done");
-          nav(redirectTo, { replace: true });
-          return;
-        }
-
-        // 2) PKCE email link: ?code=...
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get("code");
         if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          // Modern PKCE flow
+          console.log("[login] exchanging code for session…");
+          const { data, error } = await supabase.auth.exchangeCodeForSession(window.location.href);
           if (error) throw error;
-          if (!mounted) return;
-          // clean the query string
-          window.history.replaceState({}, "", window.location.pathname);
-          setStatus("done");
-          nav(redirectTo, { replace: true });
+          console.log("[login] exchange ok:", !!data?.session);
+          goNext();
           return;
         }
 
-        // 3) Legacy hash token fallback (rare)
-        const hasHash = typeof window !== "undefined" && window.location.hash?.includes("access_token");
-        if (hasHash) {
-          await new Promise((r) => setTimeout(r, 50));
-          const { data: s2 } = await supabase.auth.getSession();
-          if (mounted && s2?.session) {
-            setStatus("done");
-            nav(redirectTo, { replace: true });
-            return;
-          }
+        if (tokenHash) {
+          // Fallback: verify token hash (magiclink or recovery)
+          console.log("[login] verifying token_hash flow…", { type, hasEmail: !!emailInUrl });
+          // If the provider requires email, pass it (Supabase requires email for magiclink type)
+          const { data, error } = await supabase.auth.verifyOtp({
+            type: type === "recovery" ? "recovery" : "magiclink",
+            token_hash: tokenHash,
+            email: emailInUrl || undefined,
+          });
+          if (error) throw error;
+          console.log("[login] verifyOtp ok:", !!data?.session);
+          goNext();
+          return;
         }
-
-        // 4) No session yet — stay on form
-        setStatus("idle");
       } catch (e) {
-        console.warn("[login] exchange failed:", e);
-        if (mounted) {
-          setStatus("error");
-          setMsg(e?.message || "Sign-in link could not be verified.");
-        }
+        console.error("[login] verification failed:", e);
+        setErr(e?.message || "Could not verify the sign-in link.");
+      } finally {
+        setVerifying(false);
       }
-    }
-
-    run();
-
-    // 5) Also handle late SIGNED_IN events (Safari/Firefox quirks)
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-      if (!mounted) return;
-      if (session?.user) {
-        nav(redirectTo, { replace: true });
-      }
-    });
-
-    return () => {
-      mounted = false;
-      sub?.subscription?.unsubscribe?.();
-    };
-    // re-run if the query string changes (e.g., after clicking a new link)
-  }, [nav, redirectTo, loc.search]);
+    })();
+    // We only want this to run when the URL changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qs.toString()]);
 
   async function submit(e) {
     e.preventDefault();
-    setMsg("");
+    setErr("");
     try {
-      await signInEmail(email); // sends magic link with redirect to /login
+      await signInEmail(email);
       setSent(true);
     } catch (e2) {
-      setMsg(e2.message || "Failed to send link.");
+      setErr(e2.message || "Failed to send link.");
     }
   }
 
@@ -100,29 +96,30 @@ export default function Login() {
     <div className="container" style={{ padding: 24, maxWidth: 540 }}>
       <h1 className="display" style={{ marginBottom: 12 }}>Sign in</h1>
 
-      {status === "working" && (
-        <p style={{ opacity: 0.85 }}>Verifying magic link…</p>
-      )}
-      {status === "error" && (
-        <p style={{ color: "tomato" }}>{msg}</p>
+      {verifying && <p>Verifying magic link…</p>}
+      {err && (
+        <div style={{ color: "#ffb3b3", marginBottom: 12 }}>
+          {String(err)}
+        </div>
       )}
 
       {sent ? (
         <p>Check your email for a sign-in link.</p>
       ) : (
         <form onSubmit={submit} className="surface" style={{ padding: 16, display: "grid", gap: 12 }}>
-          <label htmlFor="email">Email</label>
+          <label>Email</label>
           <input
-            id="email"
             className="input"
-            type="email"
             value={email}
             onChange={(e)=>setEmail(e.target.value)}
             placeholder="you@example.com"
+            type="email"
+            autoComplete="email"
             required
           />
-          {msg && status !== "error" && <div style={{ color: "var(--c-ink)" }}>{msg}</div>}
-          <button className="btn btn--gold" type="submit">Send magic link</button>
+          <button className="btn btn--gold" type="submit" disabled={!email || verifying}>
+            Send magic link
+          </button>
         </form>
       )}
     </div>
