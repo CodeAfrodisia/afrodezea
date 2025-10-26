@@ -1687,3 +1687,103 @@ body { padding-bottom: var(--footer-height, 0px); }
 
 /* Ensure main content never creates horizontal scroll from wide children */
 main { min-width: 0; overflow-x: visible; }
+
+
+/* === /products layout hardeners === */
+.products-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+  position: relative;
+  isolation: isolate;            /* own stacking context so columns don’t overlap */
+}
+
+.products-aside {
+  position: sticky;
+  top: calc(var(--topnav-h, 64px) + 16px);
+  align-self: start;
+  z-index: 2;                    /* sits above its own column only */
+  max-height: calc(var(--vh) - 16px - 16px - 1px);
+  overflow: auto;
+}
+
+.products-main {
+  min-width: 0;                  /* allow shrinking inside the grid track */
+  overflow-x: hidden;            /* keep content from sliding under the aside */
+  z-index: 1;                    /* below the aside, but in its own track */
+}
+
+/* Grid inside the main column — responsive card fit */
+.products-main .products-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(clamp(220px, 24vw, 300px), 1fr)
+  );
+}
+
+
+
+/* Quiz minis: responsive grid that wraps safely */
+.quiz-summary-grid{
+  display:grid;
+  gap:16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: stretch;
+}
+
+/* card wrapper each chart sits in */
+.quiz-mini{
+  min-width:0;               /* allow shrinking, prevents overflow */
+  border-radius:14px;
+  border:1px solid var(--c-border-subtle);
+  background: var(--c-surface-1);
+  padding:12px;
+}
+
+/* Let Recharts paint labels outside without clipping */
+.quiz-mini .recharts-wrapper{ overflow: visible; }
+
+/* On very narrow screens, reduce minimum so they can still be side-by-side if possible */
+@media (max-width: 420px){
+  .quiz-summary-grid{
+    grid-template-columns: 1fr; /* stack to avoid collisions */
+  }
+}
+
+
+/* QUIZ MINIS — keep charts inside their cards on laptops */
+.quiz-mini{
+  position: relative;
+  min-width: 0;             /* grid child can shrink */
+  overflow: hidden;         /* clip chart spikes/labels to card */
+}
+
+/* Give the chart a square "bed" that scales with the card */
+.quiz-mini .chart-bed{
+  width: 100%;
+  aspect-ratio: 1 / 1;      /* Responsive square */
+  padding: 10px;            /* room for labels inside the card */
+  box-sizing: border-box;
+}
+
+/* Recharts canvas should not bleed out of the bed */
+.quiz-mini .recharts-wrapper{
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden;         /* ← overrides the earlier 'visible' rule */
+}
+
+/* Slightly smaller labels on laptop sizes so they don't push outward */
+@media (max-width: 1366px){
+  .quiz-mini .recharts-text{
+    font-size: 12px !important;
+  }
+}
+
+/* If you also show “View Details” chips, keep their z-index above the svg */
+.quiz-mini .chip, .quiz-mini .btn, .quiz-mini .cta{
+  position: relative;
+  z-index: 2;
+}

@@ -4,8 +4,10 @@ import { NavLink } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 export default function AccountLink() {
-  const { user, loading } = useAuth();
+  const { user, authLoading: loading } = useAuth();
   if (loading) return null;
+
+  
 
   // When signed in, keep this active for /account and any nested routes (no `end`)
   return user ? (

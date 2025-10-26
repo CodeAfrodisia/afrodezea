@@ -76,7 +76,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Redirect used for magic link / OAuth
-  const AUTH_REDIRECT = `${getSiteOrigin()}/products`;
+  const AUTH_REDIRECT = `${getSiteOrigin()}/login`;
 
   async function signInEmail(email) {
     console.log("[auth] signInEmail → redirect:", AUTH_REDIRECT);
