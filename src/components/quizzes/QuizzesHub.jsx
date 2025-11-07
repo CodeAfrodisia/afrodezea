@@ -27,20 +27,51 @@ export default function QuizzesHub() {
 
   useEffect(() => {
     let alive = true;
+
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("quizzes")
-        .select("id, slug, title, is_published, category, description")
-        .eq("is_published", true)
-        .order("category", { ascending: true })
-        .order("title", { ascending: true });
 
-      if (alive) {
-        if (!error && Array.isArray(data)) setQuizzes(data);
-        setLoading(false);
+      // Defensive: if the client isn’t available, don’t hang
+      if (!supabase) {
+        console.warn("[QuizzesHub] supabase client missing — using local fallback");
+        if (alive) {
+          setQuizzes([]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("quizzes")
+          .select("id, slug, title, is_published, category, description")
+          .eq("is_published", true)
+          .order("category", { ascending: true })
+          .order("title", { ascending: true });
+
+        if (!alive) return;
+
+        if (error) {
+          console.warn("[QuizzesHub] query error — using local fallback:", error);
+          setQuizzes([]); // we’ll render the fallback list below via memo
+          return;
+        }
+
+        if (Array.isArray(data)) {
+          setQuizzes(data);
+        } else {
+          console.warn("[QuizzesHub] empty/invalid data — using local fallback");
+          setQuizzes([]);
+        }
+      } catch (e) {
+        if (!alive) return;
+        console.warn("[QuizzesHub] fetch threw — using local fallback:", e);
+        setQuizzes([]);
+      } finally {
+        if (alive) setLoading(false);
       }
     })();
+
     return () => { alive = false; };
   }, []);
 
@@ -51,10 +82,10 @@ export default function QuizzesHub() {
         slug: q.slug,
         title: q.title,
         category: q.category || "Other",
-        blurb: q.description?.trim?.() || BLURBS[q.slug] || "",
+        blurb: (q.description?.trim?.() || BLURBS[q.slug] || ""),
       }));
     }
-    // fallback to local list if DB empty
+    // Fallback list if DB empty or errored
     return QUIZZES;
   }, [quizzes]);
 

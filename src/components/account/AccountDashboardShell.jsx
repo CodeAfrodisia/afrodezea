@@ -63,7 +63,10 @@ const ruleRowMood    = { display: "grid", gridTemplateColumns: "1fr auto 1fr aut
 
 const RuleGold = () => <hr className="rule-gold" />;
 const RuleGoldV = () => <div className="rule-gold-vertical" />;
-
+/* 
+const g = (typeof globalThis !== 'undefined' ? globalThis : window);
+console.log('[sb instance app/Shell] tag =', supabase && supabase.__probe);
+console.log('[sb instance app/Shell] sameRef =', (supabase && g.__sb_ref) ? (supabase === g.__sb_ref) : null); */
 
 
 /* ────────────────────────── Tiny primitives ────────────────────────── */
@@ -298,6 +301,9 @@ async function loadProfileBasics() {
   const userId = auth?.user?.id || null;
   if (!userId) return { userId: null };
 
+  console.log('[sb instance app]', supabase.__probe);
+
+
   const { data: profile } = await sbSafe(
     () =>
       supabase
@@ -444,13 +450,88 @@ function pickLatest(obj, slugList) {
   return null;
 }
 
+
+// Binds window.runProfileDiag() once so you can trigger a full profiles SELECT/UPSERT check
+function useBindProfilesDiag() {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.runProfileDiag = async function runProfileDiag() {
+      const supa = window.supabase; // shared client from supabaseClient.js
+      const start = Date.now();
+      const t = (label, extra = {}) =>
+        console.log(`[app-profiles diag] ${label}`, { t: Date.now() - start, ...extra });
+
+      try {
+        t("begin");
+        const { data: s1, error: e1 } = await supa.auth.getSession();
+        if (e1) throw e1;
+        const uid = s1?.session?.user?.id;
+        t("session", { hasSession: !!s1?.session, uid });
+
+        // SELECT (may be null first time)
+        const { data: sel, error: selErr } = await supa
+          .from("profiles")
+          .select("user_id,handle")
+          .eq("user_id", uid)
+          .maybeSingle();
+        t("select", { ok: !selErr, row: sel || null, err: selErr?.message || null });
+
+        // UPSERT (should succeed if RLS is correct)
+        const handle = "debug_" + Math.random().toString(36).slice(2, 6);
+        const { data: up, error: upErr } = await supa
+          .from("profiles")
+          .upsert({ user_id: uid, handle }, { onConflict: "user_id" })
+          .select("user_id,handle")
+          .maybeSingle();
+        t("upsert", { ok: !upErr, row: up || null, err: upErr?.message || null });
+
+        t("done");
+      } catch (err) {
+        t("caught", { message: err?.message || String(err) });
+      }
+    };
+  }, []);
+}
+
+// Tiny debug button that only shows when auth is ready with a user (hidden in prod)
+function DebugProfilesDiagButton() {
+  const { ready, user } = useAuth();
+   console.log('[DebugProfilesDiagButton] render', { ready, hasUser: !!user, prod: import.meta.env.PROD });
+  if (!ready || !user) return null;
+  if (import.meta.env.PROD) return null;
+  console.log('import.meta.env.VITE_SUPABASE_ANON_KEY')
+
+  return (
+    <button
+      onClick={() => window.runProfileDiag?.()}
+      style={{
+        position: "fixed",
+        bottom: 16,
+        right: 16,
+        zIndex: 9999,
+        padding: "8px 12px",
+        borderRadius: 8,
+        border: "1px solid #999",
+        background: "#fff",
+        cursor: "pointer",
+      }}
+    >
+      Run Profiles Diag
+    </button>
+  );
+}
+
+
+
 /* ────────────────────────── Main ────────────────────────── */
 export default function AccountDashboardShell() {
   const theme = useTheme();
-  const { user } = useAuth();
+  const { user, ready, sessions } = useAuth();
+  const shellLoading = !ready; // the ONLY top-level loading flag
+
   const navigate = useNavigate();
 
-  const [loading, setLoading] = useState(true);
+  
   const [userId, setUserId] = useState(null);
   const [username, setUsername] = useState(null);
   const [archetype, setArchetype] = useState(null);
@@ -520,24 +601,81 @@ const [pageArch, setPageArch] = useState(1);
 const [pageQuizzes, setPageQuizzes] = useState(1);
 
 
+ // pin the in-app diagnostic function on window
+  useBindProfilesDiag();
+
+console.log("[Shell render gates]", {
+  ready,
+  userId,
+  shellLoading,
+  tab,
+  pTab,
+});
+
+
+
+
+const g = (typeof globalThis !== 'undefined' ? globalThis : window);
+console.log('[Shell/useAuth] ready=', ready, 'userId=', user?.id || null, 'clientTag=', supabase && supabase.__probe, 'sameRef=', !!(supabase && g.__sb_ref && supabase === g.__sb_ref));
+
+
+// add this line temporarily somewhere near the top-level of AccountDashboardShell:
+useEffect(()=>{ console.log({fatal, userId}); }, [fatal, userId]);
+
+
+/* useEffect(() => {
+  let alive = true;
+  (async () => {
+    // if AuthContext already has a user, don’t do anything here
+    if (user?.id) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!alive) return;
+      if (session?.user?.id && !userId) setUserId(session.user.id);
+    } catch (e) {
+      console.warn('[shell bootstrap] getSession err', e);
+    } finally {
+      if (alive && loading) setLoading(false);
+    }
+  })();
+  return () => { alive = false; };
+}, []); // ← leave this with empty deps, but prefer removing it entirely */
+
+
+// Auth → Shell userId sync; no global spinner control here
+useEffect(() => {
+  if (!ready) return;               // only run once AuthContext hydrated
+  if (!user?.id) {
+    setUserId(null);
+    return;                         // do NOT toggle setLoading here
+  }
+  if (userId !== user.id) setUserId(user.id);
+}, [ready, user?.id]);              // (don’t include `loading` in deps)
+
+
 
 useEffect(() => {
-    const sp   = new URLSearchParams(window.location.search);
-    const t    = sp.get("tab");
-    const p    = sp.get("ptab");
-    const foc  = sp.get("focus"); // optional anchor like "insights"
+  const sp  = new URLSearchParams(window.location.search);
+  const t   = sp.get("tab");
+  const p   = sp.get("ptab");
+  const foc = sp.get("focus");
 
-    if (t)   setTab(t);
-    if (p)   setPTab(p);
+  // only set if different to avoid needless renders
+  if (t && t !== tab) setTab(t);
+  if (p && p !== pTab) setPTab(p);
 
-    // optional: scroll the Insights section into view
-    if (foc === "insights") {
-      setTimeout(() => {
-        document.querySelector('[data-anchor="quiz-insights"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 50);
-    }
-}
-)
+  if (foc === "insights") {
+    setTimeout(() => {
+      document
+        .querySelector('[data-anchor="quiz-insights"]')
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
+  // run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []); 
+
+
 
 
 useEffect(() => {
@@ -761,6 +899,8 @@ const handleSaveAffirmation = React.useCallback(async (text, id) => {
 }, [userId]);
 
 
+
+
 /* useEffect(() => {
   let alive = true;
   (async () => {
@@ -931,8 +1071,18 @@ const refreshMood = refreshMoodEdge || (() => {});
       revalidateOnFocus: false,
       revalidateOnVisible: false,
       enabled: !!userId && pTab === "love",
-    }
-  );
+    fetcherInit: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      return {
+        headers: {
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      };
+    },
+  }
+);
 
 // ── Archetype Deep Insights (peek DB first; only POST if needed)
 const wantArchetype = !!userId && pTab === "archetype";
@@ -1283,6 +1433,16 @@ const {
     minIntervalMs: 2_000,
     storage: "local",
     key: `generate-insights:v4:${userId}:${signalsVersion}`, // <— key tied to signalsVersion
+  fetcherInit: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      return {
+        headers: {
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      };
+    },
   }
 );
 // 🔝 put these near your other effects (top-level in AccountDashboardShell)
@@ -1340,40 +1500,36 @@ useEffect(() => {
     };
   }, []);
 
-  // Initial bootstrap
+  // Initial bootstrap replacement
   useEffect(() => {
-    let live = true;
-    (async () => {
-      setLoading(true);
-      setFatal("");
-      try {
-        const ok = await ensureSessionFresh();
-        if (!ok) {
-          setFatal("Your session expired. Please sign in again.");
-          return;
-        }
+  let live = true;
+  (async () => {
+    if (!userId) return;
 
-        const basics = await loadProfileBasics();
-        if (!live) return;
-        setUserId(basics.userId);
-        setUsername(basics.username);
-        setArchetype(basics.archetype);
-        setStreak(basics.streak ?? 0);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("No session — please sign in again.");
 
-        const [nextKpi, lq] = await Promise.all([loadKpis(basics.userId), loadLoveQuizzes(basics.userId)]);
-        if (!live) return;
-        setKpi(nextKpi);
-        setLoveQuizzes(lq);
-      } catch (e) {
-        if (live) setFatal(e?.message || "Something went wrong.");
-      } finally {
-        if (live) setLoading(false);
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, []);
+      const basics = await loadProfileBasics();
+      if (!live) return;
+      setUsername(basics.username);
+      setArchetype(basics.archetype);
+      setStreak(basics.streak ?? 0);
+
+      const [nextKpi, lq] = await Promise.all([
+        loadKpis(userId),
+        loadLoveQuizzes(userId),
+      ]);
+      if (!live) return;
+      setKpi(nextKpi);
+      setLoveQuizzes(lq);
+    } catch (e) {
+      if (live) setFatal(e?.message || "Something went wrong.");
+    }
+  })();
+  return () => { live = false; };
+}, [userId]);
+
 
 
 const quizzesHtml = useMemo(
@@ -1426,7 +1582,7 @@ const currentQ = quizzesPages[pageQuizzes - 1];
     };
   }, [userId]); */
 
-  useEffect(() => {
+ /*  useEffect(() => {
     async function onFocus() {
       if (fatal) {
         setFatal("");
@@ -1443,7 +1599,7 @@ const currentQ = quizzesPages[pageQuizzes - 1];
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("visibilitychange", vh);
     };
-  }, [fatal]);
+  }, [fatal]); */
 
   useEffect(() => {
     const id = setInterval(async () => {
@@ -1504,6 +1660,9 @@ useEffect(() => {
 }, []);
 
   
+useEffect(() => {
+  if (pTab === "archetype") setPage(1);
+}, [pTab]);
 
 
   // Live-refresh when moods change
@@ -1781,6 +1940,7 @@ function TodayPanel() {
             onSaveAffirmation={handleSaveAffirmation}
             layout="merged"
           />
+          
         </section>
       </div>
 
@@ -1802,6 +1962,7 @@ function TodayPanel() {
                   <p style={{ opacity: 0.85, margin: 0 }}>
                     Ready to check in for today? Log mood, notes, and reflections.
                   </p>
+                  
                 </div>
                 <div
                   style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -1954,6 +2115,8 @@ function isEmptyADI(adi) {
   const [mfMood, setMfMood] = React.useState(null);
   const [mfNeed, setMfNeed] = React.useState(null);
 
+  const hasUser = Boolean(userId);
+
   React.useEffect(() => {
     if (!userId) return;
     (async () => {
@@ -2026,6 +2189,18 @@ function isEmptyADI(adi) {
   }
   const [page, setPage] = useState(1);
   useEffect(() => { setPage(1); }, [pTab]);
+
+  useEffect(() => {
+    if (pTab === "quizzes") {
+      console.log("[GI] loading:", giLoading, "error:", giError, "hasData:", !!gi);
+    }
+  }, [pTab, giLoading, giError, gi]);
+
+  useEffect(() => {
+    if (pTab === "love") {
+      console.log("[LOVE] loading:", loveLoading, "error:", loveError, "hasData:", !!loveProfile);
+    }
+  }, [pTab, loveLoading, loveError, loveProfile]);
 
   // titles
   const receivingTitle = receivingRow?.result_title || (receivingRow?.result_key ? startCase(receivingRow.result_key) : "—");
@@ -2354,9 +2529,9 @@ function isEmptyADI(adi) {
       </div>
     </section>
   );
-
+/* 
   const [pageLove, setPageLove] = useState(1);
-  const [pageQuizzes, setPageQuizzes] = useState(1);
+  const [pageQuizzes, setPageQuizzes] = useState(1); */
 
   const right = (
   <div>
@@ -2372,84 +2547,84 @@ function isEmptyADI(adi) {
 
     {/* ===================== MOOD TAB (Right) ===================== */}
 {pTab === "mood" && (
-  <TourTarget
-    id="insight-panel"
-    placeholderTitle="Personalized Analysis"
-    placeholderBody="As you check in, we write short reflections that help you track patterns."
-  >
-    {/* tour highlight container */}
-    <div data-tour-container data-tour="analysis-pane-mood">
-      <RightPlate minHeight={420} >
-        <div className="section-title" style={{ marginBottom: 6 }}>
-          <h3 style={{ margin: 0 }}>Personalized Analysis</h3>
-          <span className="rule" />
-        </div>
+  hasUser ? (
+    <TourTarget
+      id="insight-panel"
+      placeholderTitle="Personalized Analysis"
+      placeholderBody="As you check in, we write short reflections that help you track patterns."
+    >
+      <div data-tour-container data-tour="analysis-pane-mood">
+        <RightPlate minHeight={420}>
+          <div className="section-title" style={{ marginBottom: 6 }}>
+            <h3 style={{ margin: 0 }}>Personalized Analysis</h3>
+            <span className="rule" />
+          </div>
 
-        <div style={{ opacity: 0.95, lineHeight: 1.6, flex: 1 }}>
-          {effectiveLoading && (
-            <div style={{ opacity: 0.7 }}>Loading your mood insight…</div>
-          )}
-
-          {!effectiveLoading && effectiveError && (
-            <div className="surface" style={{ padding: 10 }}>
-              {String(effectiveError)}
-            </div>
-          )}
-
-          {!effectiveLoading && !effectiveError && (
-            <>
-              <p style={{ marginTop: 0 }}>
-                {effectiveText ? (
-                  effectiveText
-                ) : tourMode ? (
-                  <>
-                    <em style={{ opacity: 0.7, fontStyle: "normal" }}>Example:</em>{" "}
-                    You’ve been leaning into <strong>Focus</strong> and your
-                    social battery hovers around <strong>Medium</strong>. A
-                    warm check-in routine will help keep you steady.
-                  </>
-                ) : (
-                  "We’ll craft a short mood reflection once you have a few recent check-ins."
-                )}
-              </p>
-              <InlinePager page={page} pages={1} onPage={setPage} />
-            </>
-          )}
-        </div>
-      </RightPlate>
-    </div>
-  </TourTarget>
+          <div style={{ opacity: 0.95, lineHeight: 1.6, flex: 1 }}>
+            {effectiveLoading && (
+              <div style={{ opacity: 0.7 }}>Loading your mood insight…</div>
+            )}
+            {!effectiveLoading && effectiveError && (
+              <div className="surface" style={{ padding: 10 }}>
+                {String(effectiveError)}
+              </div>
+            )}
+            {!effectiveLoading && !effectiveError && (
+              <>
+                <p style={{ marginTop: 0 }}>
+                  {effectiveText ? (
+                    effectiveText
+                  ) : tourMode ? (
+                    <>
+                      <em style={{ opacity: 0.7, fontStyle: "normal" }}>Example:</em>{" "}
+                      You’ve been leaning into <strong>Focus</strong> and your
+                      social battery hovers around <strong>Medium</strong>. A
+                      warm check-in routine will help keep you steady.
+                    </>
+                  ) : (
+                    "We’ll craft a short mood reflection once you have a few recent check-ins."
+                  )}
+                </p>
+                <InlinePager page={page} pages={1} onPage={setPage} />
+              </>
+            )}
+          </div>
+        </RightPlate>
+      </div>
+    </TourTarget>
+  ) : (
+    <RightPlate minHeight={420}>
+      <div style={{ opacity: 0.8 }}>Loading your mood insight… (waiting for sign-in)</div>
+    </RightPlate>
+  )
 )}
 
 {/* ===================== LOVE TAB (Right) ===================== */}
 {pTab === "love" && (
-  <TourTarget
-    id="insight-panel"
-    placeholderTitle="Personalized Analysis"
-    placeholderBody="We’ll weave your love patterns as you add more signals."
-  >
-    {/* tour highlight container */}
-    <div data-tour-container data-tour="analysis-pane-love">
-      <RightPlate minHeight={460} >
-        <div className="section-title" style={{ marginBottom: 6 }}>
-          <h3 style={{ margin: 0 }}>Personalized Analysis</h3>
-          <span className="rule" />
-        </div>
-
-        {loveLoading && <div>Loading your love profile…</div>}
-        {loveError && (
-          <div className="surface" style={{ padding: 10 }}>
-            {loveError}
+  hasUser ? (
+    <TourTarget
+      id="insight-panel"
+      placeholderTitle="Personalized Analysis"
+      placeholderBody="We’ll weave your love patterns as you add more signals."
+    >
+      <div data-tour-container data-tour="analysis-pane-love">
+        <RightPlate minHeight={460}>
+          <div className="section-title" style={{ marginBottom: 6 }}>
+            <h3 style={{ margin: 0 }}>Personalized Analysis</h3>
+            <span className="rule" />
           </div>
-        )}
-        {!loveLoading && !loveError && !loveProfile && (
-          <div>No love profile yet.</div>
-        )}
 
-        {!loveLoading &&
-          !loveError &&
-          loveProfile &&
-          (() => {
+          {loveLoading && <div>Loading your love profile…</div>}
+          {loveError && (
+            <div className="surface" style={{ padding: 10 }}>
+              {loveError}
+            </div>
+          )}
+          {!loveLoading && !loveError && !loveProfile && (
+            <div>No love profile yet.</div>
+          )}
+
+          {!loveLoading && !loveError && loveProfile && (() => {
             const html = loveProfileToHtml(loveProfile);
             const sections = htmlToSections(html);
             const pages = buildPagesFromSections(sections, {
@@ -2461,485 +2636,476 @@ function isEmptyADI(adi) {
             return (
               <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
                 <SectionsPage pageSections={pages[(pageLove - 1) % total]} />
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    gap: 8,
-                    marginTop: 12,
-                  }}
-                >
-                  <button
-                    className="btn btn--ghost"
-                    onClick={() => setPageLove((p) => (p <= 1 ? total : p - 1))}
-                  >
+                <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
+                  <button className="btn btn--ghost" onClick={() => setPageLove((p) => (p <= 1 ? total : p - 1))}>
                     ← Prev
                   </button>
                   <span style={{ alignSelf: "center", opacity: 0.8 }}>
                     Page {pageLove} / {total}
                   </span>
-                  <button
-                    className="btn btn--ghost"
-                    onClick={() => setPageLove((p) => (p >= total ? 1 : p + 1))}
-                  >
+                  <button className="btn btn--ghost" onClick={() => setPageLove((p) => (p >= total ? 1 : p + 1))}>
                     Next →
                   </button>
                 </div>
               </div>
             );
           })()}
-      </RightPlate>
-    </div>
-  </TourTarget>
+        </RightPlate>
+      </div>
+    </TourTarget>
+  ) : (
+    <RightPlate minHeight={460}>
+      <div style={{ opacity: 0.8 }}>Loading your love profile… (waiting for sign-in)</div>
+    </RightPlate>
+  )
 )}
 
 {/* ===================== ARCHETYPE TAB (Right) ===================== */}
 {pTab === "archetype" && (
-  <TourTarget
-    id="insight-panel"
-    placeholderTitle="Personalized Analysis"
-    placeholderBody="Your archetype deep-read will unlock as you add more signals."
-  >
-    {/* tour highlight container */}
-    <div data-tour-container data-tour="analysis-pane-arch">
-      <RightPlate minHeight={460} >
-        <div className="section-title" style={{ marginBottom: 6 }}>
-          <h3 style={{ margin: 0 }}>Personalized Analysis</h3>
-          <span className="rule" />
-        </div>
-
-        <div
-          style={{
-            opacity: 0.95,
-            lineHeight: 1.6,
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          {archDeepLoading && !adiCombined && (
-            <div style={{ opacity: 0.7 }}>Loading your archetype insight…</div>
-          )}
-
-          {archDeepError && adiCombined && (
-            <div className="surface" style={{ padding: 10, marginBottom: 8 }}>
-              Network hiccup — showing your last saved insight.
-            </div>
-          )}
-
-          {archDeepError && !adiCombined && (
-            <div className="surface" style={{ padding: 10 }}>
-              {String(archDeepError)}
-            </div>
-          )}
-
-          {adiCombined &&
-            (() => {
-              const adi = adiCombined;
-
-              if (isEmptyADI(adi)) {
-                return (
-                  <p style={{ marginTop: 0 }}>
-                    We’re preparing your archetype deep-read. Check back after a
-                    couple of fresh check-ins or try{" "}
-                    <button
-                      className="btn btn-link"
-                      onClick={() => setAdiForceNonce((n) => n + 1)}
-                    >
-                      Refresh
-                    </button>
-                    .
-                  </p>
-                );
-              }
-
-              const hasCompat =
-                (Array.isArray(adi?.compatibility?.natural_fits) &&
-                  adi.compatibility.natural_fits.length > 0) ||
-                (Array.isArray(adi?.compatibility?.likely_friction) &&
-                  adi.compatibility.likely_friction.length > 0);
-
-              const hasConflict =
-                !!adi?.conflict?.apology_vs_forgiveness ||
-                (Array.isArray(adi?.conflict?.scripts) &&
-                  adi.conflict.scripts.length > 0);
-
-              const hasSelfCare =
-                !!adi?.self_care?.love_self ||
-                (Array.isArray(adi?.self_care?.micro_practices) &&
-                  adi.self_care.micro_practices.length > 0);
-
-              const weave = adi?.weave || {};
-              const weaveNarrative =
-                Array.isArray(weave?.narrative)
-                  ? weave.narrative
-                  : typeof weave?.narrative === "string"
-                  ? [weave.narrative]
-                  : [];
-              const weaveCrossDetails = Array.isArray(
-                weave?.cross_language_details
-              )
-                ? weave.cross_language_details
-                : [];
-              const weaveTensions = Array.isArray(weave?.tensions_details)
-                ? weave.tensions_details
-                : [];
-              const weaveIntegrations = Array.isArray(weave?.integrations)
-                ? weave.integrations
-                : [];
-
-              const pages = [];
-
-              // 1
-              pages.push(
-                <React.Fragment key="a1">
-                  {adi.ribbon ? <p style={{ marginTop: 0 }}>{adi.ribbon}</p> : null}
-                  {Array.isArray(adi.portrait) && adi.portrait.length > 0
-                    ? adi.portrait.map((p, i) => (
-                        <p key={`pt-${i}`} style={{ marginTop: i ? 8 : 0 }}>
-                          {p}
-                        </p>
-                      ))
-                    : adi.portrait
-                    ? <p>{adi.portrait}</p>
-                    : null}
-                </React.Fragment>
-              );
-
-              // 2
-              if (weaveNarrative.length) {
-                pages.push(
-                  <React.Fragment key="a2">
-                    <h4 style={{ margin: "12px 0 6px" }}>Weave</h4>
-                    {weaveNarrative.map((p, i) => (
-                      <p key={`weave-n-${i}`} style={{ marginTop: i ? 6 : 0 }}>
-                        {p}
-                      </p>
-                    ))}
-                  </React.Fragment>
-                );
-              }
-
-              // 3
-              if (weaveCrossDetails.length || weaveTensions.length) {
-                pages.push(
-                  <React.Fragment key="a3">
-                    {weaveCrossDetails.length > 0 && (
-                      <>
-                        <div
-                          style={{ opacity: 0.85, fontWeight: 600, marginTop: 6 }}
-                        >
-                          Cross-language dynamics
-                        </div>
-                        <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
-                          {weaveCrossDetails.map((t, i) => (
-                            <li key={`weave-x-${i}`}>{t}</li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-                    {weaveTensions.length > 0 && (
-                      <>
-                        <div
-                          style={{ opacity: 0.85, fontWeight: 600, marginTop: 8 }}
-                        >
-                          Tender tensions
-                        </div>
-                        <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
-                          {weaveTensions.map((t, i) => (
-                            <li key={`weave-t-${i}`}>{t}</li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-                  </React.Fragment>
-                );
-              }
-
-              // 4
-              if (weaveIntegrations.length) {
-                pages.push(
-                  <React.Fragment key="a4">
-                    <div
-                      style={{ opacity: 0.85, fontWeight: 600, marginTop: 8 }}
-                    >
-                      Integrations
-                    </div>
-                    <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
-                      {weaveIntegrations.map((t, i) => (
-                        <li key={`weave-i-${i}`}>{t}</li>
-                      ))}
-                    </ul>
-                  </React.Fragment>
-                );
-              }
-
-              // 5
-              if (hasCompat) {
-                pages.push(
-                  <React.Fragment key="a5">
-                    <h4 style={{ margin: "12px 0 6px" }}>Compatibility</h4>
-                    {Array.isArray(adi.compatibility?.natural_fits) &&
-                      adi.compatibility.natural_fits.length > 0 && (
-                        <>
-                          <div
-                            style={{
-                              opacity: 0.85,
-                              fontWeight: 600,
-                              marginTop: 4,
-                            }}
-                          >
-                            Natural Fits
-                          </div>
-                          <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
-                            {adi.compatibility.natural_fits.map((b, i) => (
-                              <li key={`best-${i}`}>
-                                <strong>{b.pair}</strong> — {b.why}
-                              </li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
-                    {Array.isArray(adi.compatibility?.likely_friction) &&
-                      adi.compatibility.likely_friction.length > 0 && (
-                        <>
-                          <div
-                            style={{
-                              opacity: 0.85,
-                              fontWeight: 600,
-                              marginTop: 8,
-                            }}
-                          >
-                            Likely Friction
-                          </div>
-                          <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
-                            {adi.compatibility.likely_friction.map((f, i) => (
-                              <li key={`fric-${i}`}>
-                                <strong>{f.pair}</strong> — {f.why}
-                              </li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
-                  </React.Fragment>
-                );
-              }
-
-              // 6
-              if (hasConflict || hasSelfCare) {
-                pages.push(
-                  <React.Fragment key="a6">
-                    {hasConflict && (
-                      <>
-                        <h4 style={{ margin: "12px 0 6px" }}>
-                          Conflict Resolution
-                        </h4>
-                        {adi.conflict.apology_vs_forgiveness && (
-                          <p>{adi.conflict.apology_vs_forgiveness}</p>
-                        )}
-                        {Array.isArray(adi.conflict.scripts) &&
-                          adi.conflict.scripts.length > 0 && (
-                            <ul style={{ paddingLeft: 18, margin: 0 }}>
-                              {adi.conflict.scripts.map((s, i) => (
-                                <li key={`cr-${i}`}>{s}</li>
-                              ))}
-                            </ul>
-                          )}
-                      </>
-                    )}
-                    {hasSelfCare && (
-                      <>
-                        <h4 style={{ margin: "12px 0 6px" }}>Self-Care</h4>
-                        {adi.self_care.love_self && <p>{adi.self_care.love_self}</p>}
-                        {Array.isArray(adi.self_care.micro_practices) &&
-                          adi.self_care.micro_practices.length > 0 && (
-                            <ul style={{ paddingLeft: 18, margin: 0 }}>
-                              {adi.self_care.micro_practices.map((s, i) => (
-                                <li key={`sc-${i}`}>{s}</li>
-                              ))}
-                            </ul>
-                          )}
-                      </>
-                    )}
-                  </React.Fragment>
-                );
-              }
-
-              // 7
-              if (
-                (Array.isArray(adi.patterns) && adi.patterns.length > 0) ||
-                adi.sources
-              ) {
-                pages.push(
-                  <React.Fragment key="a7">
-                    {Array.isArray(adi.patterns) && adi.patterns.length > 0 && (
-                      <>
-                        <h4 style={{ margin: "12px 0 6px" }}>Patterns I Noticed</h4>
-                        <ul style={{ paddingLeft: 18, margin: 0 }}>
-                          {adi.patterns.map((p, i) => (
-                            <li key={`pat-${i}`}>{p}</li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
-                    {adi.sources ? (
-                      <div
-                        style={{
-                          opacity: 0.7,
-                          fontSize: ".9em",
-                          marginTop: 8,
-                        }}
-                      >
-                        <div>
-                          <strong>Sources:</strong>
-                        </div>
-                        {adi.sources.archetype && (
-                          <div>Archetype: {adi.sources.archetype}</div>
-                        )}
-                        {Array.isArray(adi.sources.signals) &&
-                          adi.sources.signals.length > 0 && (
-                            <div>Signals: {adi.sources.signals.join(", ")}</div>
-                          )}
-                        {adi.sources.checkins && (
-                          <div>Check-ins: {adi.sources.checkins}</div>
-                        )}
-                        {adi.sources.journals && (
-                          <div>Journals: {adi.sources.journals}</div>
-                        )}
-                      </div>
-                    ) : null}
-                  </React.Fragment>
-                );
-              }
-
-              return (
-                <>
-                  {pages[Math.min(page - 1, pages.length - 1)]}
-                  <InlinePager page={page} pages={pages.length} onPage={setPage} />
-                </>
-              );
-            })()}
-
-          {!archDeepLoading && !archDeepError && !adiCombined && (
-            <p style={{ marginTop: 0 }}>
-              Your archetype insights will appear here soon.
-            </p>
-          )}
-        </div>
-      </RightPlate>
-    </div>
-  </TourTarget>
-)}
-
-
-    {/* ===================== QUIZ INSIGHTS TAB (Right) ===================== */}
-    {pTab === "quizzes" && (
-      <TourTarget
-        id="quizzes-hub"
-        placeholderTitle="Your Quiz Insights"
-        placeholderBody="After you take a quiz, your results and graphs will appear here."
-      >
-        {/* unified tour anchor here too */}
-        <RightPlate minHeight={460} data-tour="analysis-pane-quizzes">
+  hasUser ? (
+    <TourTarget
+      id="insight-panel"
+      placeholderTitle="Personalized Analysis"
+      placeholderBody="Your archetype deep-read will unlock as you add more signals."
+    >
+      <div data-tour-container data-tour="analysis-pane-arch">
+        <RightPlate minHeight={460}>
           <div className="section-title" style={{ marginBottom: 6 }}>
-            <h3 style={{ margin: 0 }}>Quiz Insights</h3>
+            <h3 style={{ margin: 0 }}>Personalized Analysis</h3>
             <span className="rule" />
           </div>
 
-          {giLoading && (
-            <div style={{ opacity: 0.7 }}>Loading your insights…</div>
-          )}
-          {giError && (
-            <div className="surface" style={{ padding: 10 }}>
-              {String(giError)}
-            </div>
-          )}
+          <div
+            style={{
+              opacity: 0.95,
+              lineHeight: 1.6,
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              position: "relative",
+            }}
+            aria-live="polite"
+          >
+            {/* loading states */}
+            {archDeepLoading && !adiCombined && (
+              <div style={{ opacity: 0.7 }}>Loading your archetype insight…</div>
+            )}
+            {/* optional gentle overlay if refreshing while showing cached */}
+            {archDeepLoading && adiCombined && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  right: 8,
+                  fontSize: ".9em",
+                  opacity: 0.6,
+                }}
+              >
+                Refreshing…
+              </div>
+            )}
 
-          {!giLoading &&
-            !giError &&
-            (() => {
-              const html = insightsToHtml(gi?.insights || gi || {});
-              const allSections = htmlToSections(html);
+            {archDeepError && adiCombined && (
+              <div className="surface" style={{ padding: 10, marginBottom: 8 }}>
+                Network hiccup — showing your last saved insight.
+              </div>
+            )}
 
-              const has = (sec, kw) =>
-                String(sec.title || "").toLowerCase().includes(kw);
-              const oneOf = (sec, kws) => kws.some((k) => has(sec, k));
+            {archDeepError && !adiCombined && (
+              <div className="surface" style={{ padding: 10 }}>
+                {String(archDeepError)}
+              </div>
+            )}
 
-              let allSectionsLocal = [...allSections];
-              const take = (pred) => {
-                const picked = [];
-                const rest = [];
-                for (const s of allSectionsLocal) {
-                  (pred(s) ? picked : rest).push(s);
+            {adiCombined &&
+              (() => {
+                const adi = adiCombined;
+
+                if (isEmptyADI(adi)) {
+                  return (
+                    <p style={{ marginTop: 0 }}>
+                      We’re preparing your archetype deep-read. Check back after a
+                      couple of fresh check-ins or try{" "}
+                      <button
+                        className="btn btn-link"
+                        onClick={() => setAdiForceNonce((n) => n + 1)}
+                      >
+                        Refresh
+                      </button>
+                      .
+                    </p>
+                  );
                 }
-                allSectionsLocal = rest;
-                return picked;
-              };
 
-              const lovePage = take((s) =>
-                oneOf(s, ["receiving", "giving", "attachment"])
-              );
-              const resolutionPage = take((s) =>
-                oneOf(s, ["apology", "forgiveness", "mistake"])
-              );
-              const lastFixed = take((s) =>
-                oneOf(s, [
-                  "weaving the threads",
-                  "weave",
-                  "7-day experiment",
-                  "7 day experiment",
-                  "experiment",
-                  "personalized notes",
-                  "personal notes",
-                  "notes",
-                ])
-              );
-              const miscPage = allSectionsLocal;
+                const hasCompat =
+                  (Array.isArray(adi?.compatibility?.natural_fits) &&
+                    adi.compatibility.natural_fits.length > 0) ||
+                  (Array.isArray(adi?.compatibility?.likely_friction) &&
+                    adi.compatibility.likely_friction.length > 0);
 
-              const pagesRaw = [lovePage, resolutionPage, miscPage, lastFixed].filter(
-                (arr) => Array.isArray(arr) && arr.length > 0
-              );
-              const total = Math.max(1, pagesRaw.length);
-              const cur = Math.min(Math.max(1, pageQuizzes), total);
-              if (cur !== pageQuizzes) setPageQuizzes(cur);
+                const hasConflict =
+                  !!adi?.conflict?.apology_vs_forgiveness ||
+                  (Array.isArray(adi?.conflict?.scripts) &&
+                    adi.conflict.scripts.length > 0);
 
-              return (
-                <>
-                  <SectionsPage pageSections={pagesRaw[cur - 1]} />
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      gap: 8,
-                      marginTop: 12,
-                    }}
-                  >
-                    <button
-                      className="btn btn--ghost"
-                      onClick={() =>
-                        setPageQuizzes((p) => (p <= 1 ? total : p - 1))
-                      }
-                    >
-                      ← Prev
-                    </button>
-                    <span style={{ alignSelf: "center", opacity: 0.8 }}>
-                      Page {cur} / {total}
-                    </span>
-                    <button
-                      className="btn btn--ghost"
-                      onClick={() =>
-                        setPageQuizzes((p) => (p >= total ? 1 : p + 1))
-                      }
-                    >
-                      Next →
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
+                const hasSelfCare =
+                  !!adi?.self_care?.love_self ||
+                  (Array.isArray(adi?.self_care?.micro_practices) &&
+                    adi.self_care.micro_practices.length > 0);
+
+                const weave = adi?.weave || {};
+                const weaveNarrative =
+                  Array.isArray(weave?.narrative)
+                    ? weave.narrative
+                    : typeof weave?.narrative === "string"
+                    ? [weave.narrative]
+                    : [];
+                const weaveCrossDetails = Array.isArray(
+                  weave?.cross_language_details
+                )
+                  ? weave.cross_language_details
+                  : [];
+                const weaveTensions = Array.isArray(weave?.tensions_details)
+                  ? weave.tensions_details
+                  : [];
+                const weaveIntegrations = Array.isArray(weave?.integrations)
+                  ? weave.integrations
+                  : [];
+
+                const pages = [];
+
+                // 1
+                pages.push(
+                  <React.Fragment key="a1">
+                    {adi.ribbon ? <p style={{ marginTop: 0 }}>{adi.ribbon}</p> : null}
+                    {Array.isArray(adi.portrait) && adi.portrait.length > 0
+                      ? adi.portrait.map((p, i) => (
+                          <p key={`pt-${i}`} style={{ marginTop: i ? 8 : 0 }}>
+                            {p}
+                          </p>
+                        ))
+                      : adi.portrait
+                      ? <p>{adi.portrait}</p>
+                      : null}
+                  </React.Fragment>
+                );
+
+                // 2
+                if (weaveNarrative.length) {
+                  pages.push(
+                    <React.Fragment key="a2">
+                      <h4 style={{ margin: "12px 0 6px" }}>Weave</h4>
+                      {weaveNarrative.map((p, i) => (
+                        <p key={`weave-n-${i}`} style={{ marginTop: i ? 6 : 0 }}>
+                          {p}
+                        </p>
+                      ))}
+                    </React.Fragment>
+                  );
+                }
+
+                // 3
+                if (weaveCrossDetails.length || weaveTensions.length) {
+                  pages.push(
+                    <React.Fragment key="a3">
+                      {weaveCrossDetails.length > 0 && (
+                        <>
+                          <div
+                            style={{ opacity: 0.85, fontWeight: 600, marginTop: 6 }}
+                          >
+                            Cross-language dynamics
+                          </div>
+                          <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
+                            {weaveCrossDetails.map((t, i) => (
+                              <li key={`weave-x-${i}`}>{t}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                      {weaveTensions.length > 0 && (
+                        <>
+                          <div
+                            style={{ opacity: 0.85, fontWeight: 600, marginTop: 8 }}
+                          >
+                            Tender tensions
+                          </div>
+                          <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
+                            {weaveTensions.map((t, i) => (
+                              <li key={`weave-t-${i}`}>{t}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </React.Fragment>
+                  );
+                }
+
+                // 4
+                if (weaveIntegrations.length) {
+                  pages.push(
+                    <React.Fragment key="a4">
+                      <div
+                        style={{ opacity: 0.85, fontWeight: 600, marginTop: 8 }}
+                      >
+                        Integrations
+                      </div>
+                      <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
+                        {weaveIntegrations.map((t, i) => (
+                          <li key={`weave-i-${i}`}>{t}</li>
+                        ))}
+                      </ul>
+                    </React.Fragment>
+                  );
+                }
+
+                // 5
+                if (hasCompat) {
+                  pages.push(
+                    <React.Fragment key="a5">
+                      <h4 style={{ margin: "12px 0 6px" }}>Compatibility</h4>
+                      {Array.isArray(adi.compatibility?.natural_fits) &&
+                        adi.compatibility.natural_fits.length > 0 && (
+                          <>
+                            <div
+                              style={{
+                                opacity: 0.85,
+                                fontWeight: 600,
+                                marginTop: 4,
+                              }}
+                            >
+                              Natural Fits
+                            </div>
+                            <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
+                              {adi.compatibility.natural_fits.map((b, i) => (
+                                <li key={`best-${i}`}>
+                                  <strong>{b.pair}</strong> — {b.why}
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                      {Array.isArray(adi.compatibility?.likely_friction) &&
+                        adi.compatibility.likely_friction.length > 0 && (
+                          <>
+                            <div
+                              style={{
+                                opacity: 0.85,
+                                fontWeight: 600,
+                                marginTop: 8,
+                              }}
+                            >
+                              Likely Friction
+                            </div>
+                            <ul style={{ paddingLeft: 18, margin: "4px 0" }}>
+                              {adi.compatibility.likely_friction.map((f, i) => (
+                                <li key={`fric-${i}`}>
+                                  <strong>{f.pair}</strong> — {f.why}
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                    </React.Fragment>
+                  );
+                }
+
+                // 6
+                if (hasConflict || hasSelfCare) {
+                  pages.push(
+                    <React.Fragment key="a6">
+                      {hasConflict && (
+                        <>
+                          <h4 style={{ margin: "12px 0 6px" }}>
+                            Conflict Resolution
+                          </h4>
+                          {adi.conflict.apology_vs_forgiveness && (
+                            <p>{adi.conflict.apology_vs_forgiveness}</p>
+                          )}
+                          {Array.isArray(adi.conflict.scripts) &&
+                            adi.conflict.scripts.length > 0 && (
+                              <ul style={{ paddingLeft: 18, margin: 0 }}>
+                                {adi.conflict.scripts.map((s, i) => (
+                                  <li key={`cr-${i}`}>{s}</li>
+                                ))}
+                              </ul>
+                            )}
+                        </>
+                      )}
+                      {hasSelfCare && (
+                        <>
+                          <h4 style={{ margin: "12px 0 6px" }}>Self-Care</h4>
+                          {adi.self_care.love_self && <p>{adi.self_care.love_self}</p>}
+                          {Array.isArray(adi.self_care.micro_practices) &&
+                            adi.self_care.micro_practices.length > 0 && (
+                              <ul style={{ paddingLeft: 18, margin: 0 }}>
+                                {adi.self_care.micro_practices.map((s, i) => (
+                                  <li key={`sc-${i}`}>{s}</li>
+                                ))}
+                              </ul>
+                            )}
+                        </>
+                      )}
+                    </React.Fragment>
+                  );
+                }
+
+                // 7
+                if (
+                  (Array.isArray(adi.patterns) && adi.patterns.length > 0) ||
+                  adi.sources
+                ) {
+                  pages.push(
+                    <React.Fragment key="a7">
+                      {Array.isArray(adi.patterns) && adi.patterns.length > 0 && (
+                        <>
+                          <h4 style={{ margin: "12px 0 6px" }}>Patterns I Noticed</h4>
+                          <ul style={{ paddingLeft: 18, margin: 0 }}>
+                            {adi.patterns.map((p, i) => (
+                              <li key={`pat-${i}`}>{p}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                      {adi.sources ? (
+                        <div
+                          style={{
+                            opacity: 0.7,
+                            fontSize: ".9em",
+                            marginTop: 8,
+                          }}
+                        >
+                          <div>
+                            <strong>Sources:</strong>
+                          </div>
+                          {adi.sources.archetype && (
+                            <div>Archetype: {adi.sources.archetype}</div>
+                          )}
+                          {Array.isArray(adi.sources.signals) &&
+                            adi.sources.signals.length > 0 && (
+                              <div>Signals: {adi.sources.signals.join(", ")}</div>
+                            )}
+                          {adi.sources.checkins && (
+                            <div>Check-ins: {adi.sources.checkins}</div>
+                          )}
+                          {adi.sources.journals && (
+                            <div>Journals: {adi.sources.journals}</div>
+                          )}
+                        </div>
+                      ) : null}
+                    </React.Fragment>
+                  );
+                }
+
+                const pagesCount = Math.max(1, pages.length);
+
+                return (
+                  <>
+                    {pages[Math.min(page - 1, pagesCount - 1)]}
+                    <InlinePager
+                      page={Math.min(page, pagesCount)}
+                      pages={pagesCount}
+                      onPage={setPage}
+                    />
+                  </>
+                );
+              })()}
+
+            {!archDeepLoading && !archDeepError && !adiCombined && (
+              <p style={{ marginTop: 0 }}>
+                Your archetype insights will appear here soon.
+              </p>
+            )}
+          </div>
         </RightPlate>
-      </TourTarget>
-    )}
+      </div>
+    </TourTarget>
+  ) : (
+    <RightPlate minHeight={460}>
+      <div style={{ opacity: 0.8 }}>Loading your archetype insight… (waiting for sign-in)</div>
+    </RightPlate>
+  )
+)}
+
+
+
+    {/* ===================== QUIZ INSIGHTS TAB (Right) ===================== */}
+{pTab === "quizzes" && (
+  hasUser ? (
+    <TourTarget
+      id="quizzes-hub"
+      placeholderTitle="Your Quiz Insights"
+      placeholderBody="After you take a quiz, your results and graphs will appear here."
+    >
+      <RightPlate minHeight={460} data-tour="analysis-pane-quizzes">
+        <div className="section-title" style={{ marginBottom: 6 }}>
+          <h3 style={{ margin: 0 }}>Quiz Insights</h3>
+          <span className="rule" />
+        </div>
+
+        {giLoading && <div style={{ opacity: 0.7 }}>Loading your insights…</div>}
+        {giError && (
+          <div className="surface" style={{ padding: 10 }}>
+            {String(giError)}
+          </div>
+        )}
+
+        {!giLoading && !giError && (() => {
+          const html = insightsToHtml(gi?.insights || gi || {});
+          const allSections = htmlToSections(html);
+
+          const has = (sec, kw) => String(sec.title || "").toLowerCase().includes(kw);
+          const oneOf = (sec, kws) => kws.some((k) => has(sec, k));
+
+          let allSectionsLocal = [...allSections];
+          const take = (pred) => {
+            const picked = [];
+            const rest = [];
+            for (const s of allSectionsLocal) {
+              (pred(s) ? picked : rest).push(s);
+            }
+            allSectionsLocal = rest;
+            return picked;
+          };
+
+          const lovePage = take((s) => oneOf(s, ["receiving", "giving", "attachment"]));
+          const resolutionPage = take((s) => oneOf(s, ["apology", "forgiveness", "mistake"]));
+          const lastFixed = take((s) =>
+            oneOf(s, ["weaving the threads", "weave", "7-day experiment", "experiment", "personalized notes", "notes"])
+          );
+          const miscPage = allSectionsLocal;
+
+          const pagesRaw = [lovePage, resolutionPage, miscPage, lastFixed].filter(
+            (arr) => Array.isArray(arr) && arr.length > 0
+          );
+          const total = Math.max(1, pagesRaw.length);
+          const cur = Math.min(Math.max(1, pageQuizzes), total);
+          if (cur !== pageQuizzes) setPageQuizzes(cur);
+
+          return (
+            <>
+              <SectionsPage pageSections={pagesRaw[cur - 1]} />
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
+                <button className="btn btn--ghost" onClick={() => setPageQuizzes((p) => (p <= 1 ? total : p - 1))}>
+                  ← Prev
+                </button>
+                <span style={{ alignSelf: "center", opacity: 0.8 }}>
+                  Page {cur} / {total}
+                </span>
+                <button className="btn btn--ghost" onClick={() => setPageQuizzes((p) => (p >= total ? 1 : p + 1))}>
+                  Next →
+                </button>
+              </div>
+            </>
+          );
+        })()}
+      </RightPlate>
+    </TourTarget>
+  ) : (
+    <RightPlate minHeight={460}>
+      <div style={{ opacity: 0.8 }}>Loading your quiz insights… (waiting for sign-in)</div>
+    </RightPlate>
+  )
+)}
   </div>
 );
 
@@ -2973,38 +3139,28 @@ function isEmptyADI(adi) {
     );
   }
 
-  if (fatal) {
-    return (
-      <div style={{ padding: 24 }}>
-        <div className="surface" style={{ padding: 16, borderRadius: 12 }}>
-          <strong>We hit a snag.</strong>
-          <div style={{ opacity: 0.8, marginTop: 6 }}>{fatal}</div>
-          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-            <button className="btn btn-action" onClick={() => location.reload()}>
-              Reload
-            </button>
-            <button
-              className="btn btn--ghost"
-              onClick={async () => {
-                setFatal(null);
-                setLoading(true);
-                const ok = await ensureSessionFresh();
-                if (!ok) {
-                  setFatal("Your session expired. Please sign in again.");
-                  setLoading(false);
-                  return;
-                }
-                setLoading(false);
-              }}
-            >
-              Try again
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
+  {fatal && (
+  <div className="surface" style={{ 
+    margin: "12px 16px", padding: 12, borderRadius: 10 
+  }}>
+    <strong>We hit a snag.</strong>
+    <div style={{ opacity: 0.85, marginTop: 6 }}>{fatal}</div>
+    <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+      <button className="btn btn-action" onClick={() => location.reload()}>Reload</button>
+      <button
+        className="btn btn--ghost"
+        onClick={async () => {
+          setFatal(null);
+          try { await supabase.auth.getSession(); } catch {}
+        }}
+      >
+        Try again
+      </button>
+    </div>
+  </div>
+)}
+
+  if (shellLoading) return <div style={{ padding: 24 }}>Loading…</div>;
 
   return (
   <InsightProvider>
@@ -3084,6 +3240,7 @@ function isEmptyADI(adi) {
 
       <InsightDisplay theme={theme} />
     </div>
+    <DebugProfilesDiagButton />
   </InsightProvider>
 );
 

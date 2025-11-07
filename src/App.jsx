@@ -81,8 +81,8 @@ function CartButton() {
 }
 
 function AdminRoute({ children }) {
-  const { user, ready } = useAuth();
-  if (!ready) return <div style={{ padding: 24 }}>Loading…</div>;
+  const { user, loading, ready } = useAuth();
+  if (!ready && loading) return <div style={{ padding: 24 }}>Loading…</div>;
   if (!user) return <div style={{ padding: 24 }}>Admins only. Please sign in.</div>;
   return children;
 }
@@ -114,48 +114,61 @@ function LegacyQuizRedirect() {
  */
 function MagicLinkHandler() {
   const navigate = useNavigate();
-  const { ready } = useAuth();
   const { search, hash } = useLocation();
 
   useEffect(() => {
     let alive = true;
 
     (async () => {
-      // Let supabase parse the URL (already on by client option) and hydrate storage.
-      // We simply poll for a valid session for a short moment, then move on.
-      const waitForSession = async (tries = 12) => {
-        for (let i = 0; i < tries; i++) {
-          const { data } = await supabase.auth.getSession();
-          if (data?.session) return data.session;
-          await new Promise((r) => setTimeout(r, 150)); // ~1.8s max
+      const url = window.location.href;
+      const params = new URLSearchParams(search);
+      const hasCode = params.has("code");
+      const next = params.get("next") || "/account";
+
+      try {
+        if (hasCode) {
+          console.log("[auth/callback] code present → exchanging for session…");
+          const { data, error } = await supabase.auth.exchangeCodeForSession(url);
+          console.log("[auth/callback] exchange result:", {
+            ok: !!data?.session,
+            userId: data?.session?.user?.id || null,
+            error: error?.message || null,
+          });
+          if (error) throw error;
+        } else {
+          console.log("[auth/callback] no code in URL → letting SDK/session cache handle it");
         }
-        return null;
-      };
 
-      await waitForSession();
+        // Wait briefly for hydration (covers both exchange + cache cases)
+        for (let i = 0; i < 20; i++) {
+          const { data } = await supabase.auth.getSession();
+          if (data?.session) {
+            console.log("[auth/callback] session ready:", { userId: data.session.user.id });
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 150));
+        }
 
-      // Optional: remove auth params from the URL bar
-      // (so refreshes don’t try to re-handle the callback)
-      if (alive && (search || hash)) {
-        const clean = window.location.pathname;
-        window.history.replaceState({}, "", clean);
+        // Clean the URL and go where we meant to
+        if (alive && (search || hash)) {
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+        if (alive) {
+          console.log("[auth/callback] navigating to:", next);
+          navigate(next, { replace: true });
+        }
+      } catch (e) {
+        console.error("[auth/callback] FAILED:", e?.message || e);
       }
-
-      // Go where logged-in folks usually go
-      if (alive) navigate("/account", { replace: true });
     })();
 
-    return () => {
-      alive = false;
-    };
-  }, [navigate, ready, search, hash]);
+    return () => { alive = false; };
+  }, [navigate, search, hash]);
 
-  return (
-    <div style={{ padding: 24, opacity: 0.9 }}>
-      Signing you in…
-    </div>
-  );
+  return <div style={{ padding: 24, opacity: 0.9 }}>Signing you in…</div>;
 }
+
+
 
 export default function App() {
   // 🌿 Hook in the viewport + footer variable updater
