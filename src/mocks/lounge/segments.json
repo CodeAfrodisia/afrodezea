@@ -1,0 +1,26 @@
+[
+  {
+    "key": "morning",
+    "title": "Gentle Genesis",
+    "description": "Soft sunrise soul to begin again.",
+    "image": "/segments/morning.jpg"
+  },
+  {
+    "key": "afternoon",
+    "title": "Lovelust Lift",
+    "description": "Warm grooves for golden hours.",
+    "image": "/segments/afternoon.jpg"
+  },
+  {
+    "key": "indie",
+    "title": "Deeper Discovery",
+    "description": "Indie spotlights and hidden gems.",
+    "image": "/segments/indie.jpg"
+  },
+  {
+    "key": "evening",
+    "title": "Silhouette After Hours",
+    "description": "Velvet night pulses and hush.",
+    "image": "/segments/evening.jpg"
+  }
+]

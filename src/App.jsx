@@ -40,6 +40,7 @@ import useViewportChrome from "@lib/useViewportChrome.js";
 // Optional helpers
 import { isPreviewEnv } from "./lib/site.js";
 import supabase from "@lib/supabaseClient.js";
+import AccountDashboardPage from "./AccountDashboardPage.jsx";
 
 // Lazy pages
 const Home = lazy(() => import("./pages/Home.jsx"));
@@ -49,6 +50,13 @@ const WishlistPage = lazy(() => import("./pages/WishlistPage.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
 const AdminRatings = lazy(() => import("./pages/AdminRatings.jsx"));
 const NotFound = lazy(() => import("./pages/NotFound.jsx"));
+const JennLounge = lazy(() => import("./pages/JennLounge.jsx"));
+
+const ArtPage = lazy(() => import("./pages/Art.tsx"));
+const VaultPage = lazy(() => import("./pages/Vault.tsx"));
+const VerifyPage = lazy(() => import("./pages/Verify.tsx"));
+const ArtistUploadPage = lazy(() => import("./pages/ArtistUpload.tsx"));
+const ArtistDashboardPage = lazy(() => import("./pages/ArtistDashboard.tsx"));
 
 /* Header controls */
 function WishlistButton() {
@@ -209,6 +217,23 @@ export default function App() {
                 Products
               </NavLink>
 
+              {/* Lounge link */}
+              <NavLink
+                to="/lounge"
+                className={({ isActive }) => (isActive ? "is-active" : undefined)}
+                end
+              >
+                Lounge
+              </NavLink>
+
+                {/* NEW: Art/Gallery link */}
+  <NavLink
+    to="/art"
+    className={({ isActive }) => (isActive ? "is-active" : undefined)}
+  >
+    Art
+  </NavLink>
+
               <WishlistButton />
               <ProfileNavLink />
               <AccountLink />
@@ -245,6 +270,14 @@ export default function App() {
                 }
               />
               <Route
+                path="/lounge"
+                element={
+                  <PageBoundary name="Jenn Lounge">
+                    <JennLounge />
+                  </PageBoundary>
+                }
+              />
+              <Route
                 path="/product/:handle"
                 element={
                   <PageBoundary name="Product">
@@ -252,6 +285,56 @@ export default function App() {
                   </PageBoundary>
                 }
               />
+              <Route
+    path="/art"
+    element={
+      <PageBoundary name="Art Gallery">
+        <ArtPage />
+      </PageBoundary>
+    }
+  />
+  <Route
+    path="/vault"
+    element={
+      <ProtectedRoute>
+        <PageBoundary name="Vault">
+          <VaultPage />
+        </PageBoundary>
+      </ProtectedRoute>
+    }
+  />
+
+  {/* NEW: Public verify page */}
+  <Route
+    path="/verify/:code"
+    element={
+      <PageBoundary name="Verify Certificate">
+        <VerifyPage />
+      </PageBoundary>
+    }
+  />
+
+  {/* NEW: Artist tools */}
+  <Route
+    path="/artist/upload"
+    element={
+      <ProtectedRoute>
+        <PageBoundary name="Artist Upload">
+          <ArtistUploadPage />
+        </PageBoundary>
+      </ProtectedRoute>
+    }
+  />
+  <Route
+    path="/artist/dashboard"
+    element={
+      <ProtectedRoute>
+        <PageBoundary name="Artist Dashboard">
+          <ArtistDashboardPage />
+        </PageBoundary>
+      </ProtectedRoute>
+    }
+  />
               <Route
                 path="/wishlist"
                 element={
@@ -283,7 +366,7 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <PageBoundary name="Account Dashboard">
-                      <AccountDashboard />
+                      <AccountDashboardPage />
                     </PageBoundary>
                   </ProtectedRoute>
                 }

@@ -1,0 +1,47 @@
+/* src/styles/afrodezea-art.css
+   Localized styles used by the Afrodezea World Art v1 pages.
+   These mirror the shimmer overlay from web/src/index.css so that
+   importing the Art page from src/ uses the correct overlay animation.
+*/
+
+/* Color tokens for Afrodezea luxury palette */
+:root {
+  --afro-charcoal: #0d0b10;
+  --afro-charcoal-soft: #18131f;
+  --afro-wine: #38152f;
+  --afro-gold: #d7a75d;
+  --afro-ivory: #f4efe5;
+  --afro-muted-ivory: #d9d1c1;
+  --afro-card-brown: #2a1b15;
+}
+
+/* Dynamic Reflection Overlay (shimmer) */
+.shimmer-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    rgba(215, 167, 93, 0.06) 0%,
+    rgba(215, 167, 93, 0.12) 20%,
+    rgba(215, 167, 93, 0.06) 40%
+  );
+  background-size: 200% 200%;
+  mix-blend-mode: overlay;
+  animation: shimmer 3.5s ease-in-out infinite;
+  pointer-events: none;
+  transition: opacity 250ms ease;
+}
+
+/* Slightly stronger when parent hovered */
+.shimmer-hover:hover .shimmer-overlay { opacity: 0.95; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0%; }
+  50% { background-position: 0% 100%; }
+  100% { background-position: -200% 0%; }
+}
+
+/* Optional: ensure pointers show on interactive art elements */
+button:hover, a:hover {
+  cursor: pointer;
+}

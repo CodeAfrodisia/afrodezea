@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@lib/supabaseClient.js";
 import { useAuth } from "@context/AuthContext.jsx";
 import { useTheme } from "@lib/useTheme.jsx";
+import { useDashboard } from "@context/DashboardContext.jsx";
 
 /* ---- tiny UI helpers ---------------------------------------------------- */
 function Card({ children, style }) {
@@ -58,63 +59,65 @@ function achTarget(a = {}) {
 }
 
 /* ========================================================================= */
-export default function Tab_Achievements() {
+export default function Tab_Achievements({ userId: userIdProp }) {
   const { user } = useAuth();
-  const userId = user?.id ?? null;
+  const resolvedUserId = userIdProp ?? user?.id ?? null;
+
   const theme = (() => {
-    try { return useTheme(); } catch { return {}; }
+    try {
+      return useTheme();
+    } catch {
+      return {};
+    }
   })();
 
-  const [stats, setStats] = useState(null);
+  // ✅ Read shared stats from DashboardContext instead of refetching user_stats
+  const { stats } = useDashboard() || {};
+
   const [achievements, setAchievements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
   useEffect(() => {
     let alive = true;
+
     (async () => {
       setLoading(true);
       setErr("");
+
       try {
-        if (!userId) {
-          setStats(null);
-          setAchievements([]);
+        if (!resolvedUserId) {
+          if (alive) {
+            setAchievements([]);
+          }
           return;
         }
 
-        // 1) Load user stats (xp, streak, etc.)
-        const { data: s, error: se } = await supabase
-          .from("user_stats")
-          .select("*")
-          .eq("user_id", userId)
-          .maybeSingle();
-        if (se) throw se;
-
-        // 2) Load achievements for this user joined to achievements table
+        // Load achievements for this user joined to achievements table
         const { data, error } = await supabase
-  .from("user_achievements")
-  .select(`
-    id,
-    user_id,
-    achievement_id,
-    progress,
-    completed_at,
-    achievement:achievements!user_achievements_achievement_fk (
-      id,
-      name,
-      description,
-      icon,
-      stat_key,
-      unlock_value
-    )
-  `)
-  .eq("user_id", userId);
-
+          .from("user_achievements")
+          .select(
+            `
+            id,
+            user_id,
+            achievement_id,
+            progress,
+            completed_at,
+            achievement:achievements!user_achievements_achievement_fk (
+              id,
+              name,
+              description,
+              icon,
+              stat_key,
+              unlock_value
+            )
+          `
+          )
+          .eq("user_id", resolvedUserId);
 
         if (error) throw error;
 
         if (!alive) return;
-        setStats(s || null);
         setAchievements(data || []);
       } catch (e) {
         if (!alive) return;
@@ -125,28 +128,47 @@ export default function Tab_Achievements() {
         setLoading(false);
       }
     })();
-    return () => { alive = false; };
-  }, [userId]);
 
+    return () => {
+      alive = false;
+    };
+  }, [resolvedUserId]);
+
+  // Derive key stats from DashboardContext (with fallbacks)
   const streak = stats?.days_streak ?? 0;
   const xp = stats?.xp ?? 0;
   const tier = stats?.tier ?? "Bronze";
   const nextTierXp = stats?.tier_xp ?? 100;
 
   const achieved = useMemo(
-    () => (achievements || []).filter(a => !!a.completed_at),
+    () => (achievements || []).filter((a) => !!a.completed_at),
     [achievements]
   );
   const inProgress = useMemo(
-    () => (achievements || []).filter(a => !a.completed_at),
+    () => (achievements || []).filter((a) => !a.completed_at),
     [achievements]
   );
+
+  // If no user, show a gentle prompt instead of a hard fail
+  if (!resolvedUserId) {
+    return (
+      <div style={{ padding: 8 }}>
+        <h2 style={{ marginTop: 0 }}>Achievements</h2>
+        <Card>
+          <div style={{ opacity: 0.85 }}>
+            Sign in to start earning XP and unlocking achievements.
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 8 }}>
       <h2 style={{ marginTop: 0 }}>Achievements</h2>
 
       {loading && <div style={{ opacity: 0.8 }}>Loading…</div>}
+
       {!loading && err && (
         <div
           className="alert"
@@ -188,7 +210,14 @@ export default function Tab_Achievements() {
       </div>
 
       {/* In progress */}
-      <div style={{ marginTop: 8, marginBottom: 6, opacity: 0.85, fontWeight: 700 }}>
+      <div
+        style={{
+          marginTop: 8,
+          marginBottom: 6,
+          opacity: 0.85,
+          fontWeight: 700,
+        }}
+      >
         In Progress
       </div>
       <div
@@ -202,13 +231,22 @@ export default function Tab_Achievements() {
         {(inProgress || []).map((row) => {
           const a = row.achievement || {};
           const target = achTarget(a);
+
           return (
-            <div key={row.id} className="card surface" style={{ padding: 16, borderRadius: 16 }}>
+            <div
+              key={row.id}
+              className="card surface"
+              style={{ padding: 16, borderRadius: 16 }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 22 }}>{a.icon || "🏅"}</span>
                 <h4 style={{ margin: 0 }}>{achTitle(a)}</h4>
               </div>
-              {achDesc(a) && <p style={{ opacity: 0.85, marginTop: 8 }}>{achDesc(a)}</p>}
+
+              {achDesc(a) && (
+                <p style={{ opacity: 0.85, marginTop: 8 }}>{achDesc(a)}</p>
+              )}
+
               {target != null && (
                 <div style={{ marginTop: 8 }}>
                   <div style={{ fontSize: 13, opacity: 0.8 }}>
@@ -220,10 +258,26 @@ export default function Tab_Achievements() {
             </div>
           );
         })}
+
+        {!inProgress.length && !loading && (
+          <Card>
+            <div style={{ opacity: 0.8 }}>
+              You don’t have any achievements in progress yet — keep exploring
+              Afrodezea and you’ll start unlocking them soon.
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* Completed */}
-      <div style={{ marginTop: 8, marginBottom: 6, opacity: 0.85, fontWeight: 700 }}>
+      <div
+        style={{
+          marginTop: 8,
+          marginBottom: 6,
+          opacity: 0.85,
+          fontWeight: 700,
+        }}
+      >
         Completed
       </div>
       <div
@@ -242,12 +296,20 @@ export default function Tab_Achievements() {
           const current = row.progress ?? 0;
 
           return (
-            <div key={row.id} className="card surface" style={{ padding: 16, borderRadius: 16 }}>
+            <div
+              key={row.id}
+              className="card surface"
+              style={{ padding: 16, borderRadius: 16 }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 22 }}>{icon}</span>
                 <h4 style={{ margin: 0 }}>{title}</h4>
               </div>
-              {desc && <p style={{ opacity: 0.85, marginTop: 8 }}>{desc}</p>}
+
+              {desc && (
+                <p style={{ opacity: 0.85, marginTop: 8 }}>{desc}</p>
+              )}
+
               {target != null && (
                 <div style={{ marginTop: 8 }}>
                   <div style={{ fontSize: 13, opacity: 0.8 }}>
@@ -260,7 +322,7 @@ export default function Tab_Achievements() {
           );
         })}
 
-        {!achieved.length && (
+        {!achieved.length && !loading && (
           <Card>
             <div style={{ opacity: 0.8 }}>No completed achievements yet.</div>
           </Card>

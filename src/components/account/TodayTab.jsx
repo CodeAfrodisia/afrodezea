@@ -7,6 +7,7 @@ import { logJournalAnalysis } from "@logic/logJournalAnalysis.js";
 import { isSameDay } from "date-fns";
 import { useTheme as useThemeCtx, defaultTheme } from "@lib/useTheme.jsx";
 import { useToast } from "@components/ui/Toast.jsx";
+import { useDashboard } from "@context/DashboardContext.jsx";
 
 /* ---------- Lightweight buttons ---------- */
 const PrimaryButton = (props) => <button {...props} className="btn btn--gold" />;
@@ -14,9 +15,14 @@ const PrimaryButtonNoMargin = PrimaryButton;
 const PreviousButton = (props) => <button {...props} className="btn" />;
 const PreviousButtonNoMargin = PreviousButton;
 
-// Debug toggle
-const DBG = true;
-const dbg = (...args) => { if (DBG) console.log("[TodayTab]", ...args); };
+// Debug toggle: on in dev, off in production
+const DBG =
+  typeof import.meta !== "undefined" &&
+  import.meta.env &&
+  import.meta.env.DEV;
+const dbg = (...args) => {
+  if (DBG) console.log("[TodayTab]", ...args);
+};
 
 /* ---------- Choice sets ---------- */
 const MOODS = [
@@ -70,13 +76,13 @@ const pillStyle = (active, theme) => ({
 /* ======================================================================= */
 
 export default function TodayTab({
-  userId,
-  step,                // lifted from parent
-  setStep,             // lifted from parent
+  userId: userIdProp,
+  step, // lifted from parent
+  setStep, // lifted from parent
   currentTab,
   setCurrentTab,
   responses,
-  setResponses,        // parent setter (if provided)
+  setResponses, // parent setter (if provided)
   isEditing,
   setIsEditing,
   isReadOnlyView,
@@ -95,11 +101,19 @@ export default function TodayTab({
   title = null,
   prefill = true,
 }) {
-  if (submissionStatus === null) return <div style={{ color: "#fff" }}>Loading...</div>;
-
   /* ---------- Theme ---------- */
-  const themeFromContext = (() => { try { return useThemeCtx?.(); } catch { return null; } })();
+  const themeFromContext = (() => {
+    try {
+      return useThemeCtx?.();
+    } catch {
+      return null;
+    }
+  })();
   const theme = themeProp || themeFromContext || defaultTheme;
+
+  /* ---------- Dashboard context (XP refresh, fallback userId) ---------- */
+  const { userId: contextUserId, refreshDashboard } = useDashboard();
+  const effectiveUserId = userIdProp || contextUserId || null;
 
   /* ---------- Local (derived) ---------- */
   const [existingEntry, setExistingEntry] = useState(null);
@@ -112,16 +126,27 @@ export default function TodayTab({
   const [usedPrompts, setUsedPrompts] = useState([]);
 
   const safeStep = Number.isFinite(step) ? step : 1;
-  const isToday = useMemo(() => !!selectedDate && isSameDay(new Date(), new Date(selectedDate)), [selectedDate]);
-  const hasSubmitted = submissionStatus === "submitted" || submissionStatus === "updated";
+  const isToday = useMemo(
+    () => !!selectedDate && isSameDay(new Date(), new Date(selectedDate)),
+    [selectedDate]
+  );
+  const hasSubmitted =
+    submissionStatus === "submitted" || submissionStatus === "updated";
   const isWizard = isEditing && !hasSubmitted;
 
   const haveAllSignals = Boolean(
-    responses.mood && responses.social_battery && responses.love_language && responses.need
+    responses.mood &&
+      responses.social_battery &&
+      responses.love_language &&
+      responses.need
   );
 
-  const [journalDraft, setJournalDraft] = React.useState(responses.journal || "");
-  useEffect(() => { setJournalDraft(responses.journal || ""); }, [responses.journal]);
+  const [journalDraft, setJournalDraft] = React.useState(
+    responses.journal || ""
+  );
+  useEffect(() => {
+    setJournalDraft(responses.journal || "");
+  }, [responses.journal]);
   const isJournalFilled = Boolean((journalDraft || "").trim());
   const draftInitRef = React.useRef(false);
 
@@ -130,17 +155,32 @@ export default function TodayTab({
 
   /* ---------- Response setter (parent-first, fallback local) ---------- */
   const [localResponses, setLocalResponses] = useState(
-    responses || { mood: "", social_battery: "", love_language: "", need: "", follow_up: "", journal: "", archetype: "" }
-  );
-  useEffect(() => { if (responses) setLocalResponses(responses); }, [responses]);
-
-  const setResponsesMerged = React.useCallback((updater) => {
-    if (typeof setResponses === "function") {
-      setResponses(updater);
-    } else {
-      setLocalResponses(prev => (typeof updater === "function" ? updater(prev) : updater));
+    responses || {
+      mood: "",
+      social_battery: "",
+      love_language: "",
+      need: "",
+      follow_up: "",
+      journal: "",
+      archetype: "",
     }
-  }, [setResponses]);
+  );
+  useEffect(() => {
+    if (responses) setLocalResponses(responses);
+  }, [responses]);
+
+  const setResponsesMerged = React.useCallback(
+    (updater) => {
+      if (typeof setResponses === "function") {
+        setResponses(updater);
+      } else {
+        setLocalResponses((prev) =>
+          typeof updater === "function" ? updater(prev) : updater
+        );
+      }
+    },
+    [setResponses]
+  );
 
   // Re-initialize the draft when we *enter* step 5 (once per entry)
   useEffect(() => {
@@ -166,17 +206,21 @@ export default function TodayTab({
   /* ---------- Pre-fill if a mood exists for this day ---------- */
   useEffect(() => {
     if (!prefill) return;
-    if (!userId) return;
+    if (!effectiveUserId) return;
 
     (async () => {
       const targetDate = selectedDate ? new Date(selectedDate) : new Date();
-      const start = new Date(targetDate); start.setHours(0,0,0,0);
-      const end   = new Date(targetDate); end.setHours(23,59,59,999);
+      const start = new Date(targetDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(targetDate);
+      end.setHours(23, 59, 59, 999);
 
       const { data, error } = await supabase
         .from("moods")
-        .select("id, mood, social_battery, love_language, follow_up, journal, created_at, need")
-        .eq("user_id", userId)
+        .select(
+          "id, mood, social_battery, love_language, follow_up, journal, created_at, need"
+        )
+        .eq("user_id", effectiveUserId)
         .gte("created_at", start.toISOString())
         .lt("created_at", end.toISOString())
         .limit(1)
@@ -201,7 +245,14 @@ export default function TodayTab({
         setStep(0);
       }
     })();
-  }, [prefill, userId, selectedDate, setResponsesMerged, setSubmissionStatus, setStep]);
+  }, [
+    prefill,
+    effectiveUserId,
+    selectedDate,
+    setResponsesMerged,
+    setSubmissionStatus,
+    setStep,
+  ]);
 
   /* ---------- Step 5 prompt orchestration ---------- */
   useEffect(() => {
@@ -214,7 +265,11 @@ export default function TodayTab({
       try {
         setFollowUpLoading(true);
         const { prompt } = getFollowUpPrompt(
-          { mood: responses.mood, social_battery: responses.social_battery, love_language: responses.love_language },
+          {
+            mood: responses.mood,
+            social_battery: responses.social_battery,
+            love_language: responses.love_language,
+          },
           usedPrompts
         );
         setFollowUpPrompt(prompt || "What’s on your heart today?");
@@ -222,11 +277,24 @@ export default function TodayTab({
         setFollowUpLoading(false);
       }
     })();
-  }, [safeStep, haveAllSignals, followUpLoading, responses, usedPrompts]);
+  }, [
+    safeStep,
+    haveAllSignals,
+    followUpLoading,
+    responses.mood,
+    responses.social_battery,
+    responses.love_language,
+    usedPrompts,
+  ]);
 
   // --- mounted guard + one-shot latch for API prompt ---
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    []
+  );
 
   const fetchedOnceRef = useRef(false);
   useEffect(() => {
@@ -245,16 +313,19 @@ export default function TodayTab({
   async function fetchJournalPrompt(forceNew = false) {
     setLoadingPrompt(true);
     try {
-      const { data, error } = await supabase.functions.invoke("journal-prompt", {
-        body: {
-          mood: responses.mood || "",
-          social_battery: responses.social_battery || "",
-          love_language: responses.love_language || "",
-          archetype,
-          usedPrompts: usedPrompts || [],
-          forceNew,
-        },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        "journal-prompt",
+        {
+          body: {
+            mood: responses.mood || "",
+            social_battery: responses.social_battery || "",
+            love_language: responses.love_language || "",
+            archetype,
+            usedPrompts: usedPrompts || [],
+            forceNew,
+          },
+        }
+      );
       if (error) throw error;
 
       const prompt = (data?.prompt || "What's on your mind today?").trim();
@@ -263,8 +334,11 @@ export default function TodayTab({
       if (mountedRef.current) {
         setSuggestedPrompt(prompt);
         setPromptSource(source);
-        setResponsesMerged(r => ({ ...r, follow_up: prompt || r.follow_up }));
-        setUsedPrompts(prev => (prompt ? [...prev, prompt] : prev));
+        setResponsesMerged((r) => ({
+          ...r,
+          follow_up: prompt || r.follow_up,
+        }));
+        setUsedPrompts((prev) => (prompt ? [...prev, prompt] : prev));
       }
     } catch (e) {
       console.warn("journal-prompt failed:", e);
@@ -272,7 +346,7 @@ export default function TodayTab({
       if (mountedRef.current) {
         setSuggestedPrompt(fb);
         setPromptSource("fallback");
-        setResponsesMerged(r => ({ ...r, follow_up: fb }));
+        setResponsesMerged((r) => ({ ...r, follow_up: fb }));
       }
     } finally {
       if (mountedRef.current) setLoadingPrompt(false);
@@ -284,28 +358,31 @@ export default function TodayTab({
     setLoadingPrompt(true);
     try {
       const used = usedPrompts || [];
-      const { data, error } = await supabase.functions.invoke("journal-prompt", {
-        body: {
-          mood: responses.mood || "",
-          social_battery: responses.social_battery || "",
-          love_language: responses.love_language || "",
-          usedPrompts: used,
-          forceNew: true,
-        },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        "journal-prompt",
+        {
+          body: {
+            mood: responses.mood || "",
+            social_battery: responses.social_battery || "",
+            love_language: responses.love_language || "",
+            usedPrompts: used,
+            forceNew: true,
+          },
+        }
+      );
       if (error) throw error;
 
       const next = (data?.prompt || "").trim();
       if (next && mountedRef.current) {
-        setResponsesMerged(r => ({ ...r, follow_up: next }));
-        setUsedPrompts(prev => [...prev, next]);
+        setResponsesMerged((r) => ({ ...r, follow_up: next }));
+        setUsedPrompts((prev) => [...prev, next]);
         setPromptSource(data?.source || "ai");
       }
     } catch (e) {
       console.warn("journal-prompt failed; using fallback", e);
       const fb = "What's on your mind today?";
       if (mountedRef.current) {
-        setResponsesMerged(r => ({ ...r, follow_up: fb }));
+        setResponsesMerged((r) => ({ ...r, follow_up: fb }));
         setPromptSource("fallback");
       }
     } finally {
@@ -317,70 +394,95 @@ export default function TodayTab({
     if (followUpLoading) return;
     setFollowUpLoading(true);
     const { prompt } = getFollowUpPrompt(
-      { mood: responses.mood, social_battery: responses.social_battery, love_language: responses.love_language },
+      {
+        mood: responses.mood,
+        social_battery: responses.social_battery,
+        love_language: responses.love_language,
+      },
       usedPrompts
     );
     const next = (prompt || "What’s on your heart today?").trim();
     setFollowUpPrompt(next);
-    setUsedPrompts(prev => [...prev, next]);
+    setUsedPrompts((prev) => [...prev, next]);
     setFollowUpLoading(false);
   }
 
   /* ---------- Navigation helpers ---------- */
-  const goNext = React.useCallback(() => setStep(s => Math.min(5, s + 1)), [setStep]);
-  const goPrev  = React.useCallback(() => setStep(s => Math.max(0, s - 1)), [setStep]);
+  const goNext = React.useCallback(
+    () => setStep((s) => Math.min(5, s + 1)),
+    [setStep]
+  );
+  const goPrev = React.useCallback(
+    () => setStep((s) => Math.max(0, s - 1)),
+    [setStep]
+  );
 
   // ✅ Single update; clear *downstream* fields so guards only advance one step
-  const selectAndMaybeNext = React.useCallback((key, value) => {
-    setResponsesMerged(prev => {
-      const next = { ...prev, [key]: value };
-      if (key === "mood") {
-        next.social_battery = "";
-        next.love_language  = "";
-        next.need           = "";
-      } else if (key === "social_battery") {
-        next.love_language  = "";
-        next.need           = "";
-      } else if (key === "love_language") {
-        next.need           = "";
-      }
-      return next;
-    });
-  }, [setResponsesMerged]);
+  const selectAndMaybeNext = React.useCallback(
+    (key, value) => {
+      setResponsesMerged((prev) => {
+        const next = { ...prev, [key]: value };
+        if (key === "mood") {
+          next.social_battery = "";
+          next.love_language = "";
+          next.need = "";
+        } else if (key === "social_battery") {
+          next.love_language = "";
+          next.need = "";
+        } else if (key === "love_language") {
+          next.need = "";
+        }
+        return next;
+      });
+    },
+    [setResponsesMerged]
+  );
 
   // Forward-only auto-advance guards (logs left in for now)
-  useEffect(() => { dbg("step =", safeStep); }, [safeStep]);
-  useEffect(() => { dbg("isWizard =", isWizard, "submissionStatus =", submissionStatus); }, [isWizard, submissionStatus]);
-  useEffect(() => { dbg("responses.mood =", responses.mood); }, [responses.mood]);
-  useEffect(() => { dbg("responses.social_battery =", responses.social_battery); }, [responses.social_battery]);
-  useEffect(() => { dbg("responses.love_language =", responses.love_language); }, [responses.love_language]);
-  useEffect(() => { dbg("responses.need =", responses.need); }, [responses.need]);
+  useEffect(() => {
+    dbg("step =", safeStep);
+  }, [safeStep]);
+  useEffect(() => {
+    dbg("isWizard =", isWizard, "submissionStatus =", submissionStatus);
+  }, [isWizard, submissionStatus]);
+  useEffect(() => {
+    dbg("responses.mood =", responses.mood);
+  }, [responses.mood]);
+  useEffect(() => {
+    dbg("responses.social_battery =", responses.social_battery);
+  }, [responses.social_battery]);
+  useEffect(() => {
+    dbg("responses.love_language =", responses.love_language);
+  }, [responses.love_language]);
+  useEffect(() => {
+    dbg("responses.need =", responses.need);
+  }, [responses.need]);
 
   useEffect(() => {
     if (!isWizard) return;
     if (safeStep === 1 && (responses.mood ?? "") !== "") {
-      setStep(s => (s < 2 ? 2 : s));
+      setStep((s) => (s < 2 ? 2 : s));
     }
   }, [isWizard, safeStep, responses.mood, setStep]);
 
   useEffect(() => {
     if (!isWizard) return;
     if (safeStep === 2 && (responses.social_battery ?? "") !== "") {
-      setStep(s => (s < 3 ? 3 : s));
+      setStep((s) => (s < 3 ? 3 : s));
     }
   }, [isWizard, safeStep, responses.social_battery, setStep]);
 
   useEffect(() => {
     if (!isWizard) return;
     if (safeStep === 3 && (responses.love_language ?? "") !== "") {
-      setStep(s => (s < 4 ? 4 : s));
+      setStep((s) => (s < 4 ? 4 : s));
     }
   }, [isWizard, safeStep, responses.love_language, setStep]);
 
   useEffect(() => {
     if (!isWizard) return;
     if (safeStep === 4 && (responses.need ?? "") !== "") {
-      setStep(s => (s < 5 ? 5 : s));
+      setStep((s) => (s < 5 ? 5 : s));
     }
   }, [isWizard, safeStep, responses.need, setStep]);
 
@@ -403,16 +505,76 @@ export default function TodayTab({
       >
         <h2 style={{ marginTop: 0 }}>Your Check-In</h2>
         <ul style={{ paddingLeft: "1rem", marginTop: "1rem" }}>
-          <InteractiveListItem icon="😊" label="Mood"            value={responses.mood}            step={1} onClick={setStep} isToday={todayFlag} setIsEditing={todayFlag ? setIsEditing : undefined} isEditing={editing} />
-          <InteractiveListItem icon="🔋" label="Social Battery"  value={responses.social_battery}  step={2} onClick={setStep} isToday={todayFlag} setIsEditing={todayFlag ? setIsEditing : undefined} isEditing={editing} />
-          <InteractiveListItem icon="💖" label="Love Language"   value={responses.love_language}   step={3} onClick={setStep} isToday={todayFlag} setIsEditing={todayFlag ? setIsEditing : undefined} isEditing={editing} />
-          <InteractiveListItem icon="✨" label="Need"             value={responses.need}            step={4} onClick={setStep} isToday={todayFlag} setIsEditing={todayFlag ? setIsEditing : undefined} isEditing={editing} />
-          <InteractiveListItem icon="📓" label="Journal"          value={responses.journal}         step={5} onClick={setStep} isToday={todayFlag} setIsEditing={todayFlag ? setIsEditing : undefined} isEditing={editing} />
+          <InteractiveListItem
+            icon="😊"
+            label="Mood"
+            value={responses.mood}
+            step={1}
+            onClick={setStep}
+            isToday={todayFlag}
+            setIsEditing={todayFlag ? setIsEditing : undefined}
+            isEditing={editing}
+          />
+          <InteractiveListItem
+            icon="🔋"
+            label="Social Battery"
+            value={responses.social_battery}
+            step={2}
+            onClick={setStep}
+            isToday={todayFlag}
+            setIsEditing={todayFlag ? setIsEditing : undefined}
+            isEditing={editing}
+          />
+          <InteractiveListItem
+            icon="💖"
+            label="Love Language"
+            value={responses.love_language}
+            step={3}
+            onClick={setStep}
+            isToday={todayFlag}
+            setIsEditing={todayFlag ? setIsEditing : undefined}
+            isEditing={editing}
+          />
+          <InteractiveListItem
+            icon="✨"
+            label="Need"
+            value={responses.need}
+            step={4}
+            onClick={setStep}
+            isToday={todayFlag}
+            setIsEditing={todayFlag ? setIsEditing : undefined}
+            isEditing={editing}
+          />
+          <InteractiveListItem
+            icon="📓"
+            label="Journal"
+            value={responses.journal}
+            step={5}
+            onClick={setStep}
+            isToday={todayFlag}
+            setIsEditing={todayFlag ? setIsEditing : undefined}
+            isEditing={editing}
+          />
         </ul>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 24 }}>
-          <button onClick={() => setStep(4)} className="chip" style={{ border: "1px solid #444" }}>← Previous</button>
-          {editing && <PrimaryButton onClick={handleSubmit}>Save Changes</PrimaryButton>}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            gap: 16,
+            marginTop: 24,
+          }}
+        >
+          <button
+            onClick={() => setStep(4)}
+            className="chip"
+            style={{ border: "1px solid #444" }}
+          >
+            ← Previous
+          </button>
+          {editing && (
+            <PrimaryButton onClick={handleSubmit}>Save Changes</PrimaryButton>
+          )}
 
           {activeTab?.toLowerCase() === "today" && editing && (
             <button
@@ -438,19 +600,21 @@ export default function TodayTab({
 
   /* ---------- Submit ---------- */
   const handleSubmit = async () => {
-    if (!userId) { 
-      push("Please log in to save your check-in.", "info"); 
-      return; 
+    if (!effectiveUserId) {
+      push("Please log in to save your check-in.", "info");
+      return;
     }
 
     const now = new Date();
     const oldJournal = existingEntry?.journal || "";
 
     // commit latest draft
-    setResponsesMerged(r => (r.journal === journalDraft ? r : { ...r, journal: journalDraft }));
+    setResponsesMerged((r) =>
+      r.journal === journalDraft ? r : { ...r, journal: journalDraft }
+    );
 
     const moodPayload = {
-      user_id: userId,
+      user_id: effectiveUserId,
       mood: responses.mood || null,
       social_battery: responses.social_battery || null,
       love_language: responses.love_language || null,
@@ -468,7 +632,10 @@ export default function TodayTab({
           .update({ ...moodPayload, updated_at: now.toISOString() })
           .eq("id", existingEntry.id);
         dbErr = error || null;
-        if (!dbErr) { setSubmissionStatus("updated"); push("Check-in updated.", "success"); }
+        if (!dbErr) {
+          setSubmissionStatus("updated");
+          push("Check-in updated.", "success");
+        }
       } else {
         const { data, error } = await supabase
           .from("moods")
@@ -476,7 +643,11 @@ export default function TodayTab({
           .select()
           .maybeSingle();
         dbErr = error || null;
-        if (!dbErr) { setExistingEntry(data || null); setSubmissionStatus("submitted"); push("Check-in saved.", "success"); }
+        if (!dbErr) {
+          setExistingEntry(data || null);
+          setSubmissionStatus("submitted");
+          push("Check-in saved.", "success");
+        }
       }
 
       if (dbErr) throw dbErr;
@@ -484,24 +655,53 @@ export default function TodayTab({
       // side-effects
       const savedId = existingEntry?.id
         ? existingEntry.id
-        : (await supabase
-            .from("moods")
-            .select("id")
-            .eq("user_id", userId)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle()
+        : (
+            await supabase
+              .from("moods")
+              .select("id")
+              .eq("user_id", effectiveUserId)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
           ).data?.id ?? null;
 
       if (savedId && (journalDraft || "").trim()) {
         try {
-          await logJournalAnalysis(userId, savedId, journalDraft);
-          await updateKeywordTracker(userId, journalDraft, oldJournal);
-        } catch (e) { console.warn("Journal side-effects failed:", e); }
+          await logJournalAnalysis(effectiveUserId, savedId, journalDraft);
+          await updateKeywordTracker(effectiveUserId, journalDraft, oldJournal);
+        } catch (e) {
+          console.warn("Journal side-effects failed:", e);
+        }
       }
 
-      try { await supabase.rpc("rpc_update_user_stats", { p_user: userId, p_xp: 10 }); } catch (e) { console.warn("stats update failed", e); }
-      try { await supabase.rpc("rpc_eval_achievements", { p_user: userId }); } catch {}
+      try {
+        await supabase.rpc("rpc_update_user_stats", {
+          p_user: effectiveUserId,
+          p_xp: 10,
+        });
+      } catch (e) {
+        console.warn("stats update failed", e);
+      }
+
+      try {
+        await supabase.rpc("rpc_eval_achievements", {
+          p_user: effectiveUserId,
+        });
+      } catch {
+        // silent
+      }
+
+      // Refresh shared dashboard stats / XP if available
+      if (typeof refreshDashboard === "function") {
+        try {
+          await refreshDashboard();
+        } catch (e) {
+          console.warn(
+            "[TodayTab] refreshDashboard failed (non-blocking):",
+            e
+          );
+        }
+      }
 
       setIsEditing(false);
       setIsReadOnlyView(true);
@@ -518,19 +718,39 @@ export default function TodayTab({
       return (
         <div>
           <h2>{feedback}</h2>
-          <p style={{ marginTop: "1rem", fontStyle: "italic", whiteSpace: "pre-wrap", color: "#ccc", padding: "1rem", backgroundColor: "#1a1a1a", borderRadius: "0.75rem", border: "1px solid #333" }}>
+          <p
+            style={{
+              marginTop: "1rem",
+              fontStyle: "italic",
+              whiteSpace: "pre-wrap",
+              color: "#ccc",
+              padding: "1rem",
+              backgroundColor: "#1a1a1a",
+              borderRadius: "0.75rem",
+              border: "1px solid #333",
+            }}
+          >
             {responses.journal}
           </p>
-          <button onClick={() => { setFeedback(""); setStep(5); }} className="chip">Edit Entry</button>
+          <button
+            onClick={() => {
+              setFeedback("");
+              setStep(5);
+            }}
+            className="chip"
+          >
+            Edit Entry
+          </button>
         </div>
       );
     }
 
     switch (safeStep) {
       case 0: {
-        if (isToday && isEditing)       return renderSummaryBlock(true, true);
-        if (isToday && hasSubmitted)    return renderSummaryBlock(false, true);
-        if (!isToday || isReadOnlyView) return renderSummaryBlock(false, false);
+        if (isToday && isEditing) return renderSummaryBlock(true, true);
+        if (isToday && hasSubmitted) return renderSummaryBlock(false, true);
+        if (!isToday || isReadOnlyView)
+          return renderSummaryBlock(false, false);
         return null;
       }
 
@@ -538,7 +758,14 @@ export default function TodayTab({
         return (
           <>
             <h2>How are you feeling today?</h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                justifyContent: "center",
+              }}
+            >
               {MOODS.map((m) => (
                 <button
                   key={m.value}
@@ -557,12 +784,22 @@ export default function TodayTab({
         return (
           <>
             <h2>What's your social energy level?</h2>
-            <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
               {BATTERY.map((b) => (
                 <button
                   key={b.value}
                   onClick={() => selectAndMaybeNext("social_battery", b.value)}
-                  style={pillStyle(responses.social_battery === b.value, theme)}
+                  style={pillStyle(
+                    responses.social_battery === b.value,
+                    theme
+                  )}
                   aria-pressed={responses.social_battery === b.value}
                 >
                   {b.label}
@@ -571,9 +808,20 @@ export default function TodayTab({
             </div>
 
             {!isWizard && (
-              <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 16 }}>
-                <button onClick={goPrev} className="chip">Back</button>
-                <PrimaryButton onClick={handleSubmit}>Save Changes</PrimaryButton>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: 12,
+                  marginTop: 16,
+                }}
+              >
+                <button onClick={goPrev} className="chip">
+                  Back
+                </button>
+                <PrimaryButton onClick={handleSubmit}>
+                  Save Changes
+                </PrimaryButton>
               </div>
             )}
           </>
@@ -583,7 +831,14 @@ export default function TodayTab({
         return (
           <>
             <h2>What love language feels most relevant today?</h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                justifyContent: "center",
+              }}
+            >
               {LOVE_LANGS.map((ll) => (
                 <button
                   key={ll}
@@ -597,9 +852,20 @@ export default function TodayTab({
             </div>
 
             {!isWizard && (
-              <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 16 }}>
-                <button onClick={goPrev} className="chip">Back</button>
-                <PrimaryButton onClick={handleSubmit}>Save Changes</PrimaryButton>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: 12,
+                  marginTop: 16,
+                }}
+              >
+                <button onClick={goPrev} className="chip">
+                  Back
+                </button>
+                <PrimaryButton onClick={handleSubmit}>
+                  Save Changes
+                </PrimaryButton>
               </div>
             )}
           </>
@@ -608,8 +874,18 @@ export default function TodayTab({
       case 4:
         return (
           <>
-            <h2 style={{ marginTop: 0 }}>What do you need most right now?</h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", margin: "14px 0 8px" }}>
+            <h2 style={{ marginTop: 0 }}>
+              What do you need most right now?
+            </h2>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 10,
+                justifyContent: "center",
+                margin: "14px 0 8px",
+              }}
+            >
               {NEEDS.map((n) => (
                 <button
                   key={n.value}
@@ -624,7 +900,14 @@ export default function TodayTab({
             </div>
 
             {!isWizard && (
-              <div style={{ display: "flex", justifyContent: "center", gap: "1rem", marginTop: "1.75rem" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: "1rem",
+                  marginTop: "1.75rem",
+                }}
+              >
                 <PreviousButton onClick={goPrev} />
                 <button
                   onClick={() => setStep(5)}
@@ -667,16 +950,27 @@ export default function TodayTab({
                 }}
               >
                 <div style={{ fontStyle: "italic" }}>
-                  {followUpLoading ? "Crafting a gentle prompt…" : (followUpPrompt || "What’s on your heart today?")}
+                  {followUpLoading
+                    ? "Crafting a gentle prompt…"
+                    : followUpPrompt || "What’s on your heart today?"}
                 </div>
 
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginTop: 10,
+                  }}
+                >
                   <button
                     className="chip"
                     disabled={loadingPrompt}
                     onClick={() => {
                       if (suggestedPrompt) {
-                        setResponsesMerged(r => ({ ...r, follow_up: suggestedPrompt }));
+                        setResponsesMerged((r) => ({
+                          ...r,
+                          follow_up: suggestedPrompt,
+                        }));
                         setPromptSource(promptSource || "ai");
                       }
                     }}
@@ -684,17 +978,35 @@ export default function TodayTab({
                     {loadingPrompt ? "…" : "Use"}
                   </button>
 
-                  <button className="chip" onClick={handleAnotherAngle} disabled={loadingPrompt}>
+                  <button
+                    className="chip"
+                    onClick={handleAnotherAngle}
+                    disabled={loadingPrompt}
+                  >
                     {loadingPrompt ? "Thinking…" : "Another angle"}
                   </button>
 
-                  <button className="chip" onClick={() => setResponsesMerged(r => ({ ...r, follow_up: "" }))}>
+                  <button
+                    className="chip"
+                    onClick={() =>
+                      setResponsesMerged((r) => ({
+                        ...r,
+                        follow_up: "",
+                      }))
+                    }
+                  >
                     No prompt
                   </button>
                 </div>
 
                 {promptSource && (
-                  <div style={{ fontSize: 12, opacity: .7, marginTop: 6 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      opacity: 0.7,
+                      marginTop: 6,
+                    }}
+                  >
                     Source: {promptSource === "ai" ? "AI" : "fallback"}
                   </div>
                 )}
@@ -702,7 +1014,13 @@ export default function TodayTab({
             )}
 
             {responses.follow_up && (
-              <p style={{ margin: "6px 0 10px", opacity: 0.9, fontStyle: "italic" }}>
+              <p
+                style={{
+                  margin: "6px 0 10px",
+                  opacity: 0.9,
+                  fontStyle: "italic",
+                }}
+              >
                 Prompt: {responses.follow_up}
               </p>
             )}
@@ -730,12 +1048,24 @@ export default function TodayTab({
               }}
             />
 
-            <div style={{ display: "flex", gap: "1rem", justifyContent: "center", alignItems: "center", marginTop: "1rem" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "1rem",
+                justifyContent: "center",
+                alignItems: "center",
+                marginTop: "1rem",
+              }}
+            >
               {isEditing && (
                 <button
                   className="chip"
                   onClick={() => {
-                    setResponsesMerged(r => (r.journal === journalDraft ? r : { ...r, journal: journalDraft }));
+                    setResponsesMerged((r) =>
+                      r.journal === journalDraft
+                        ? r
+                        : { ...r, journal: journalDraft }
+                    );
                     setStep(4);
                   }}
                 >
@@ -747,10 +1077,15 @@ export default function TodayTab({
                 <button
                   className="btn btn--gold"
                   onClick={handleSubmit}
-                  style={{ marginTop: 0, opacity: isJournalFilled ? 1 : 0.7 }}
+                  style={{
+                    marginTop: 0,
+                    opacity: isJournalFilled ? 1 : 0.7,
+                  }}
                 >
                   {isJournalFilled
-                    ? (existingEntry ? "Update Entry" : "Submit Entry")
+                    ? existingEntry
+                      ? "Update Entry"
+                      : "Submit Entry"
                     : "Submit Without Entry"}
                 </button>
               )}
@@ -774,13 +1109,39 @@ export default function TodayTab({
   const isLoading = submissionStatus === null || responses === null;
   const isEmbedded = variant === "embedded";
   const wrapperStyle = isEmbedded
-    ? { backgroundColor: "transparent", padding: 0, borderRadius: 0, color: "#fff", maxWidth: "100%", margin: 0, textAlign: "center" }
-    : { backgroundColor: "#0e0e0e", padding: "2rem", borderRadius: "1.5rem", color: "#fff", boxShadow: "0 0 12px rgba(0,0,0,0.4)", maxWidth: "600px", margin: "0 auto", textAlign: "center" };
+    ? {
+        backgroundColor: "transparent",
+        padding: 0,
+        borderRadius: 0,
+        color: "#fff",
+        maxWidth: "100%",
+        margin: 0,
+        textAlign: "center",
+      }
+    : {
+        backgroundColor: "#0e0e0e",
+        padding: "2rem",
+        borderRadius: "1.5rem",
+        color: "#fff",
+        boxShadow: "0 0 12px rgba(0,0,0,0.4)",
+        maxWidth: "600px",
+        margin: "0 auto",
+        textAlign: "center",
+      };
 
   return (
     <div style={wrapperStyle}>
       {isEmbedded && title ? (
-        <h3 style={{ marginTop: 0, marginBottom: 12, fontSize: 18, textAlign: "left" }}>{title}</h3>
+        <h3
+          style={{
+            marginTop: 0,
+            marginBottom: 12,
+            fontSize: 18,
+            textAlign: "left",
+          }}
+        >
+          {title}
+        </h3>
       ) : null}
 
       {isLoading ? (

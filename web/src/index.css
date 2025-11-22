@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: focus ring helpers */
+:focus-visible { outline: none; }
+
+/* Dynamic Reflection Overlay (shimmer) */
+.shimmer-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    rgba(255, 215, 128, 0.06) 0%,
+    rgba(255, 215, 128, 0.12) 20%,
+    rgba(255, 215, 128, 0.06) 40%
+  );
+  background-size: 200% 200%;
+  mix-blend-mode: overlay;
+  animation: shimmer 3.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0%; }
+  50% { background-position: 0% 100%; }
+  100% { background-position: -200% 0%; }
+}
+
+/* Cursor ring for clickable art */
+button:hover, a:hover {
+  cursor: pointer;
+}

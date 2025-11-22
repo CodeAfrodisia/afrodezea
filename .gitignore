@@ -1,0 +1,20 @@
+
+# Afrodezea
+.env
+.env.*
+.supabase/*-config.toml
+node_modules/
+dist/
+.vite/
+.vercel/
+.DS_Store
+
+# Afrodezea
+.env
+.env.*
+.supabase/*-config.toml
+node_modules/
+dist/
+.vite/
+.vercel/
+.DS_Store

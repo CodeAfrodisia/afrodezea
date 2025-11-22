@@ -104,7 +104,7 @@ export default function MoodTab({ userId, archetype, theme: themeProp }) {
         setStep(1);
       }
     }
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedDate, groupedByDate]);
 
   // Load entries for user
   useEffect(() => {
@@ -150,6 +150,8 @@ export default function MoodTab({ userId, archetype, theme: themeProp }) {
         return (
           <TodayTab
             userId={userId}
+            step={step}
+            setStep={setStep}
             currentTab={currentTab}
             setCurrentTab={setCurrentTab}
             responses={responses}
@@ -162,7 +164,7 @@ export default function MoodTab({ userId, archetype, theme: themeProp }) {
             setSelectedDate={setSelectedDate}
             setActiveTab={setActiveTab}
             activeTab={activeTab}
-            setJournalDetails={() => {}}
+            setJournalDetails={setJournalDetails}
             journalDetails={journalDetails}
             hasManuallySetStep={hasManuallySetStep}
             submissionStatus={submissionStatus}
